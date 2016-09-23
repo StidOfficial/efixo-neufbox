@@ -1,0 +1,34 @@
+--- a/arch/mips/mm/fault.c
++++ b/arch/mips/mm/fault.c
+@@ -130,7 +130,6 @@ bad_area_nosemaphore:
+ 	if (user_mode(regs)) {
+ 		tsk->thread.cp0_badvaddr = address;
+ 		tsk->thread.error_code = write;
+-#if 0
+ 		printk("do_page_fault() #2: sending SIGSEGV to %s for "
+ 		       "invalid %s\n%0*lx (epc == %0*lx, ra == %0*lx)\n",
+ 		       tsk->comm,
+@@ -138,7 +137,6 @@ bad_area_nosemaphore:
+ 		       field, address,
+ 		       field, (unsigned long) regs->cp0_epc,
+ 		       field, (unsigned long) regs->regs[31]);
+-#endif
+ 		info.si_signo = SIGSEGV;
+ 		info.si_errno = 0;
+ 		/* info.si_code has been set above */
+@@ -185,7 +183,6 @@ do_sigbus:
+ 	 * Send a sigbus, regardless of whether we were in kernel
+ 	 * or user mode.
+ 	 */
+-#if 0
+ 		printk("do_page_fault() #3: sending SIGBUS to %s for "
+ 		       "invalid %s\n%0*lx (epc == %0*lx, ra == %0*lx)\n",
+ 		       tsk->comm,
+@@ -193,7 +190,6 @@ do_sigbus:
+ 		       field, address,
+ 		       field, (unsigned long) regs->cp0_epc,
+ 		       field, (unsigned long) regs->regs[31]);
+-#endif
+ 	tsk->thread.cp0_badvaddr = address;
+ 	info.si_signo = SIGBUS;
+ 	info.si_errno = 0;

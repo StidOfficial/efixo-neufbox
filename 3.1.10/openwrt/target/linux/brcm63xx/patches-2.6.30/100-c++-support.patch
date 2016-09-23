@@ -1,0 +1,127 @@
+--- a/scripts/Makefile.build
++++ b/scripts/Makefile.build
+@@ -228,6 +228,25 @@ $(obj)/%.o: $(src)/%.c FORCE
+ 	$(call cmd,force_checksrc)
+ 	$(call if_changed_rule,cc_o_c)
+ 
++# C++ support
++cmd_cc_o_cpp = $(CXX) $(c_flags) -fno-exceptions -c -o $@ $<
++quiet_cmd_cc_o_cpp = C++ $(quiet_modtag) $@
++
++define rule_cc_o_cpp
++	$(if $($(quiet)cmd_checksrc),echo '  $($(quiet)cmd_checksrc)';) \
++	$(cmd_checksrc)                                                 \
++	$(if $($(quiet)cmd_cc_o_cpp),echo '  $($(quiet)cmd_cc_o_cpp)';) \
++	$(cmd_cc_o_cpp);                                                \
++	$(cmd_modversions)                                              \
++	scripts/basic/fixdep $(depfile) $@ '$(cmd_cc_o_cpp)' > $(@D)/.$(@F).tmp; \
++	rm -f $(depfile);                                               \
++	mv -f $(@D)/.$(@F).tmp $(@D)/.$(@F).cmd
++endef
++
++%.o: %.cpp FORCE
++	$(call if_changed_rule,cc_o_cpp)
++
++
+ # Single-part modules are special since we need to mark them in $(MODVERDIR)
+ 
+ $(single-used-m): $(obj)/%.o: $(src)/%.c FORCE
+--- a/Makefile
++++ b/Makefile
+@@ -317,6 +317,7 @@ include $(srctree)/scripts/Kbuild.includ
+ AS		= $(CROSS_COMPILE)as
+ LD		= $(CROSS_COMPILE)ld
+ CC		= $(CROSS_COMPILE)gcc
++CXX		= $(CROSS_COMPILE)g++
+ CPP		= $(CC) -E
+ AR		= $(CROSS_COMPILE)ar
+ NM		= $(CROSS_COMPILE)nm
+@@ -366,6 +367,7 @@ export HOSTCXX HOSTCXXFLAGS LDFLAGS_MODU
+ 
+ export KBUILD_CPPFLAGS NOSTDINC_FLAGS LINUXINCLUDE OBJCOPYFLAGS LDFLAGS
+ export KBUILD_CFLAGS CFLAGS_KERNEL CFLAGS_MODULE
++export CXX CXXFLAGS NOSTDINCXX_FLAGS
+ export KBUILD_AFLAGS AFLAGS_KERNEL AFLAGS_MODULE
+ 
+ # When compiling out-of-tree modules, put MODVERDIR in the module
+@@ -528,8 +530,10 @@ all: vmlinux
+ 
+ ifdef CONFIG_CC_OPTIMIZE_FOR_SIZE
+ KBUILD_CFLAGS	+= -Os
++KBUILD_CXXFLAGS	+= -Os
+ else
+ KBUILD_CFLAGS	+= -O2 -fno-reorder-blocks -fno-tree-ch
++KBUILD_CXXFLAGS	+= -O2 -fno-reorder-blocks -fno-tree-ch
+ endif
+ 
+ include $(srctree)/arch/$(SRCARCH)/Makefile
+@@ -545,12 +549,15 @@ endif
+ 
+ ifdef CONFIG_FRAME_POINTER
+ KBUILD_CFLAGS	+= -fno-omit-frame-pointer -fno-optimize-sibling-calls
++KBUILD_CXXFLAGS	+= -fomit-frame-pointer -fno-optimize-sibling-calls
+ else
+ KBUILD_CFLAGS	+= -fomit-frame-pointer
++KBUILD_CXXFLAGS	+= -fomit-frame-pointer
+ endif
+ 
+ ifdef CONFIG_DEBUG_INFO
+ KBUILD_CFLAGS	+= -g
++KBUILD_CXXFLAGS	+= -g
+ KBUILD_AFLAGS	+= -gdwarf-2
+ endif
+ 
+@@ -567,6 +574,12 @@ endif
+ NOSTDINC_FLAGS += -nostdinc -isystem $(shell $(CC) -print-file-name=include)
+ CHECKFLAGS     += $(NOSTDINC_FLAGS)
+ 
++# arch Makefile may override CXX so keep this after arch Makefile is included
++NOSTDINCXX_FLAGS += $(NOSTDINC_FLAGS) -nostdinc
++KBUILD_CXXFLAGS  += -fno-strict-aliasing -fno-common -G 0 -mno-abicalls -fno-pic \
++		    -fpermissive -w -fno-exceptions -fno-rtti -msoft-float -mabi=32 \
++		    -ffreestanding -pipe -march=mips32 -Wall -Wundef -Wno-trigraphs
++
+ # improve gcc optimization
+ CFLAGS += $(call cc-option,-funit-at-a-time,)
+ 
+--- a/scripts/Makefile.lib
++++ b/scripts/Makefile.lib
+@@ -112,6 +112,9 @@ endif
+ orig_c_flags   = $(KBUILD_CPPFLAGS) $(KBUILD_CFLAGS) $(KBUILD_SUBDIR_CCFLAGS) \
+                  $(ccflags-y) $(CFLAGS_$(basetarget).o)
+ _c_flags       = $(filter-out $(CFLAGS_REMOVE_$(basetarget).o), $(orig_c_flags))
++orig_cxx_flags = $(KBUILD_CPPFLAGS) $(KBUILD_CXXFLAGS) $(KBUILD_SUBDIR_CCFLAGS) \
++                 $(ccflags-y) $(CXXFLAGS_$(basetarget).o)
++_cxx_flags     = $(filter-out $(CXXFLAGS_REMOVE_$(basetarget).o), $(orig_cxx_flags))
+ _a_flags       = $(KBUILD_CPPFLAGS) $(KBUILD_AFLAGS) $(KBUILD_SUBDIR_ASFLAGS) \
+                  $(asflags-y) $(AFLAGS_$(basetarget).o)
+ _cpp_flags     = $(KBUILD_CPPFLAGS) $(cppflags-y) $(CPPFLAGS_$(@F))
+@@ -121,6 +124,7 @@ _cpp_flags     = $(KBUILD_CPPFLAGS) $(cp
+ 
+ ifeq ($(KBUILD_SRC),)
+ __c_flags	= $(_c_flags)
++__cxx_flags	= $(_cxx_flags)
+ __a_flags	= $(_a_flags)
+ __cpp_flags     = $(_cpp_flags)
+ else
+@@ -130,6 +134,7 @@ else
+ #   and locates generated .h files
+ # FIXME: Replace both with specific CFLAGS* statements in the makefiles
+ __c_flags	= $(call addtree,-I$(obj)) $(call flags,_c_flags)
++__cxx_flags	= $(call addtree,-I$(obj)) $(call flags,_cxx_flags)
+ __a_flags	=                          $(call flags,_a_flags)
+ __cpp_flags     =                          $(call flags,_cpp_flags)
+ endif
+@@ -139,6 +144,12 @@ c_flags        = -Wp,-MD,$(depfile) $(NO
+ 		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags) \
+ 		  $(debug_flags)
+ 
++cxx_flags      = -Wp,-MD,$(depfile) $(NOSTDINCXX_FLAGS) $(CPPFLAGS)       \
++		 $(__cxx_flags) $(modkern_cflags)                         \
++		 -D"KBUILD_STR(s)=\#s" $(basename_flags) $(modname_flags) \
++		  $(debug_flags)
++
++
+ a_flags        = -Wp,-MD,$(depfile) $(NOSTDINC_FLAGS) $(LINUXINCLUDE)     \
+ 		 $(__a_flags) $(modkern_aflags)
+ 

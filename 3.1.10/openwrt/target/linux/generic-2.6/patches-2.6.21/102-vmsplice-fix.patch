@@ -1,0 +1,23 @@
+--- a/fs/splice.c
++++ b/fs/splice.c
+@@ -1171,7 +1171,7 @@ static int get_iovec_page_array(const st
+ 		if (unlikely(!len))
+ 			break;
+ 		error = -EFAULT;
+-		if (unlikely(!base))
++		if (!access_ok(VERIFY_READ, base, len))
+ 			break;
+ 
+ 		/*
+--- a/mm/memory.c
++++ b/mm/memory.c
+@@ -983,6 +983,9 @@ int get_user_pages(struct task_struct *t
+ 	int i;
+ 	unsigned int vm_flags;
+ 
++	if ( len <= 0 )
++		return 0;
++
+ 	/* 
+ 	 * Require read or write permissions.
+ 	 * If 'force' is set, we only require the "MAY" flags.

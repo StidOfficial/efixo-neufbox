@@ -1,0 +1,20 @@
+--- a/src/ifvc.c
++++ b/src/ifvc.c
+@@ -243,6 +243,7 @@ int isAdressValidForIf( struct IfDesc* i
+         return 0;
+     }
+     // Loop through all registered allowed nets of the VIF...
++#if 0
+     for(currsubnet = intrface->allowednets; currsubnet != NULL; currsubnet = currsubnet->next) {
+         // Check if the ip falls in under the subnet....
+         if((ipaddr & currsubnet->subnet_mask) == currsubnet->subnet_addr) {
+@@ -250,6 +251,9 @@ int isAdressValidForIf( struct IfDesc* i
+         }
+     }
+     return 0;
++#else
++    return 1;
++#endif
+ }
+ 
+ 

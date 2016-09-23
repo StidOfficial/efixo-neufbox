@@ -1,0 +1,18 @@
+--- a/source/lib/doscalls.c
++++ b/source/lib/doscalls.c
+@@ -110,11 +110,15 @@ int dos_lstat(char *fname,SMB_STRUCT_STA
+ 
+ int dos_mkdir(char *dname,mode_t mode)
+ {
++#if 0
+   int ret = mkdir(dos_to_unix(dname,False),mode);
+   if(!ret)
+     return(dos_chmod(dname,mode));
+   else
+     return ret;
++#else
++  return(mkdir(dos_to_unix(dname,False),mode));
++#endif
+ }
+ 
+ /*******************************************************************

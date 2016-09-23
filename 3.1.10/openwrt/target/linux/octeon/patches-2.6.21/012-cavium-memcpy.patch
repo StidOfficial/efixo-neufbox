@@ -1,0 +1,16 @@
+--- a/arch/mips/lib/Makefile
++++ b/arch/mips/lib/Makefile
+@@ -2,7 +2,12 @@
+ # Makefile for MIPS-specific library files..
+ #
+ 
+-lib-y	+= csum_partial.o memcpy.o memcpy-inatomic.o memset.o strlen_user.o \
++ifdef CONFIG_CPU_CAVIUM_OCTEON
++lib-y	+= memcpy-octeon.o
++else
++lib-y	+= memcpy.o
++endif
++lib-y	+= csum_partial.o memcpy-inatomic.o memset.o strlen_user.o \
+ 	   strncpy_user.o strnlen_user.o uncached.o
+ 
+ obj-y			+= iomap.o

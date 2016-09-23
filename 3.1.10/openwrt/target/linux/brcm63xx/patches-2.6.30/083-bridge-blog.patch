@@ -1,0 +1,123 @@
+--- a/net/bridge/br_input.c
++++ b/net/bridge/br_input.c
+@@ -16,6 +16,11 @@
+ #include <linux/etherdevice.h>
+ #include <linux/netfilter_bridge.h>
+ #include "br_private.h"
++#if defined(CONFIG_BCM63XX)
++#if defined(CONFIG_BLOG)
++#include <linux/blog.h>
++#endif
++#endif
+ 
+ /* Bridge group multicast address 802.1d (pg 51). */
+ const u8 br_group_address[ETH_ALEN] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x00 };
+@@ -24,6 +29,9 @@ static int br_pass_frame_up(struct sk_bu
+ {
+ 	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
+ 
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	blog_dev( skb, BR_INPUT_SKB_CB(skb)->brdev, DIR_RX, skb->len );
++#endif
+ 	brdev->stats.rx_packets++;
+ 	brdev->stats.rx_bytes += skb->len;
+ 
+--- a/net/bridge/br_forward.c
++++ b/net/bridge/br_forward.c
+@@ -18,7 +18,9 @@
+ #include <linux/if_vlan.h>
+ #include <linux/netfilter_bridge.h>
+ #include "br_private.h"
+-
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++#include <linux/blog.h>
++#endif
+ static int deliver_clone(const struct net_bridge_port *prev,
+ 			 struct sk_buff *skb,
+ 			 void (*__packet_hook)(const struct net_bridge_port *p,
+@@ -124,6 +126,11 @@ static int deliver_clone(const struct ne
+ 			 void (*__packet_hook)(const struct net_bridge_port *p,
+ 					       struct sk_buff *skb))
+ {
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++	struct sk_buff *skb2;
++	skb2 = skb;
++#endif
++
+ 	skb = skb_clone(skb, GFP_ATOMIC);
+ 	if (!skb) {
+ 		struct net_device *dev = BR_INPUT_SKB_CB(skb)->brdev;
+@@ -131,6 +138,9 @@ static int deliver_clone(const struct ne
+ 		dev->stats.tx_dropped++;
+ 		return -ENOMEM;
+ 	}
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++	blog_clone(skb, skb2->blog_p);
++#endif
+ 
+ 	__packet_hook(prev, skb);
+ 	return 0;
+@@ -167,6 +177,10 @@ static void br_flood(struct net_bridge *
+ 	struct net_bridge_port *p;
+ 	struct net_bridge_port *prev;
+ 
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	if ( skb->blog_p && !skb->blog_p->rx.info.multicast)
++		blog_skip(skb);
++#endif
+ 	prev = NULL;
+ 
+ 	list_for_each_entry_rcu(p, &br->port_list, list) {
+@@ -177,7 +191,6 @@ static void br_flood(struct net_bridge *
+ 
+ 	if (!prev)
+ 		goto out;
+-
+ 	if (skb0)
+ 		deliver_clone(prev, skb, __packet_hook);
+ 	else
+@@ -243,7 +256,6 @@ static void br_multicast_flood(struct ne
+ 
+ 	if (!prev)
+ 		goto out;
+-
+ 	if (skb0)
+ 		deliver_clone(prev, skb, __packet_hook);
+ 	else
+--- a/net/bridge/br_private.h
++++ b/net/bridge/br_private.h
+@@ -133,6 +133,10 @@ struct net_bridge
+ 	spinlock_t			lock;
+ 	struct list_head		port_list;
+ 	struct net_device		*dev;
++#ifdef CONFIG_BLOG
++	BlogStats_t bstats; /* stats when the blog promiscuous layer has consumed packets */
++	struct net_device_stats cstats; /* Cummulative Device stats (rx-bytes, tx-pkts, etc...) */
++#endif
+ 	spinlock_t			hash_lock;
+ 	struct hlist_head		hash[BR_HASH_SIZE];
+ 	struct list_head		age_list;
+--- a/net/bridge/br_device.c
++++ b/net/bridge/br_device.c
+@@ -19,6 +19,10 @@
+ #include <asm/uaccess.h>
+ #include "br_private.h"
+ 
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++#include <linux/blog.h>
++#endif
++
+ /* net device transmit always called with no BH (preempt_disabled) */
+ int br_dev_xmit(struct sk_buff *skb, struct net_device *dev)
+ {
+@@ -29,6 +33,10 @@ int br_dev_xmit(struct sk_buff *skb, str
+ 
+ 	BR_INPUT_SKB_CB(skb)->brdev = dev;
+ 
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++	blog_dev( skb, dev, DIR_TX, skb->len );
++#endif
++
+ 	dev->stats.tx_packets++;
+ 	dev->stats.tx_bytes += skb->len;
+ 

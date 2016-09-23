@@ -1,0 +1,25 @@
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -1100,6 +1100,12 @@ config TELCLOCK
+ 	  /sys/devices/platform/telco_clock, with a number of files for
+ 	  controlling the behavior of this hardware.
+ 
++config RING_LOGS
++	tristate "Ring logs"
++	default y
++	help
++	  This addd support for ring logs
++
+ config DEVPORT
+ 	bool
+ 	depends on !M68K
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -98,6 +98,7 @@ obj-$(CONFIG_GPIO_DEVICE)	+= gpio_dev.o
+ obj-$(CONFIG_GPIO_VR41XX)	+= vr41xx_giu.o
+ obj-$(CONFIG_GPIO_TB0219)	+= tb0219.o
+ obj-$(CONFIG_TELCLOCK)		+= tlclk.o
++obj-$(CONFIG_RING_LOGS)		+= ring-logs.o
+ 
+ obj-$(CONFIG_MWAVE)		+= mwave/
+ obj-$(CONFIG_AGP)		+= agp/

@@ -1,0 +1,38 @@
+--- a/drivers/spi/Kconfig
++++ b/drivers/spi/Kconfig
+@@ -230,11 +230,23 @@ config SPI_XILINX
+ 	  Product Specification document (DS464) for hardware details.
+ 
+ config SPI_BCM63XX
+-	tristate "Broadcom BCM63xx SPI controller"
++	tristate "Broadcom BCM63xx SPI controller (openwrt)"
+ 	depends on BCM63XX
+ 	help
+ 	  SPI driver for the Broadcom BCM63xx SPI controller.
+ 
++config SPI_BCM
++       tristate "Broadcom BCM63xx SPI controller"
++       depends on BCM63XX
++       help
++         SPI driver for the Broadcom BCM63xx SPI controller.
++
++config SPI_HS_BCM
++       tristate "Broadcom BCM63xx High Speed SPI controller"
++       depends on BCM63XX
++       help
++         SPI driver for the Broadcom BCM63xx High Speed SPI controller
++
+ #
+ # Add new SPI master controllers in alphabetical order above this line
+ #
+--- a/drivers/spi/Makefile
++++ b/drivers/spi/Makefile
+@@ -32,6 +32,8 @@ obj-$(CONFIG_SPI_TXX9)			+= spi_txx9.o
+ obj-$(CONFIG_SPI_XILINX)		+= xilinx_spi.o
+ obj-$(CONFIG_SPI_SH_SCI)		+= spi_sh_sci.o
+ obj-$(CONFIG_SPI_BCM63XX)		+= bcm63xx_spi.o
++obj-$(CONFIG_SPI_HS_BCM)		+= bcm63xx_hsspi.o
++obj-$(CONFIG_SPI_BCM)			+= bcm_spi.o
+ # 	... add above this line ...
+ 
+ # SPI protocol drivers (device/link on bus)

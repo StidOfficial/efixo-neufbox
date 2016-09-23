@@ -1,0 +1,12 @@
+--- a/networking/wget.c
++++ b/networking/wget.c
+@@ -1045,5 +1045,9 @@ However, in real world it was observed t
+ 		ftpcmd("QUIT", NULL, sfd, buf);
+ 	}
+ 
++	/* if gotclen: content_len must be equal to 0 */
++	if (G.got_clen && content_len)
++		return 3; /* special magic: do not delete files */
++
+ 	return EXIT_SUCCESS;
+ }

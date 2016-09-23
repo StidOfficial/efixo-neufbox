@@ -1,0 +1,21 @@
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -52,6 +52,8 @@ source "drivers/i2c/Kconfig"
+ 
+ source "drivers/spi/Kconfig"
+ 
++source "drivers/tdm/Kconfig"
++
+ source "drivers/gpio/Kconfig"
+ 
+ source "drivers/w1/Kconfig"
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -52,6 +52,7 @@ obj-y				+= cdrom/
+ obj-y				+= auxdisplay/
+ obj-$(CONFIG_MTD)		+= mtd/
+ obj-$(CONFIG_SPI)		+= spi/
++obj-$(CONFIG_TDM)		+= tdm/
+ obj-$(CONFIG_PCCARD)		+= pcmcia/
+ obj-$(CONFIG_DIO)		+= dio/
+ obj-$(CONFIG_SBUS)		+= sbus/

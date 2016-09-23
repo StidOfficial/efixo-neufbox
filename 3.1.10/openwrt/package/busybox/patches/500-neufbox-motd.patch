@@ -1,0 +1,37 @@
+--- a/libbb/login.c
++++ b/libbb/login.c
+@@ -88,10 +88,34 @@ void FAST_FUNC print_login_issue(const c
+ 	fflush(stdout);
+ }
+ 
++static void neufbox_motd(FILE *stream)
++{
++	FILE *file;
++	char *motd = NULL;
++	size_t n = 0;
++
++	file = fopen("/tmp/motd", "r");
++	if (!file)
++		return;
++
++	getline(&motd, &n, file);
++	fclose(file);
++	if (motd) {
++		fprintf(stream, "%s\n", motd);
++		free(motd);
++	}
++}
++
++
+ void FAST_FUNC print_login_prompt(void)
+ {
++#ifdef NB4
++	char *hostname = strdup("Lost");
++#else
+ 	char *hostname = safe_gethostname();
++#endif
+ 
++	neufbox_motd(stdout);
+ 	fputs(hostname, stdout);
+ 	fputs(LOGIN, stdout);
+ 	fflush(stdout);

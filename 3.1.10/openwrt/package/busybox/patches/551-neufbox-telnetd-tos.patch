@@ -1,0 +1,35 @@
+--- a/networking/telnetd.c
++++ b/networking/telnetd.c
+@@ -25,6 +25,11 @@
+ 
+ #include "libbb.h"
+ #include <syslog.h>
++#ifdef VOIP_DSCP
++#include <sys/socket.h>
++#include <netinet/in.h>
++#include <netinet/ip.h> /* superset of previous */
++#endif
+ 
+ #if DEBUG
+ #define TELCMDS
+@@ -564,6 +569,9 @@ int telnetd_main(int argc UNUSED_PARAM,
+ 	/* Check for and accept new sessions */
+ 	if (!IS_INETD && FD_ISSET(master_fd, &rdfdset)) {
+ 		int fd;
++#ifdef VOIP_DSCP
++		int tos;
++#endif
+ 		struct tsession *new_ts;
+ 
+ 		fd = accept(master_fd, NULL, NULL);
+@@ -571,6 +579,10 @@ int telnetd_main(int argc UNUSED_PARAM,
+ 			goto again;
+ 		close_on_exec_on(fd);
+ 
++#ifdef VOIP_DSCP
++		tos = (VOIP_DSCP << 2);
++		setsockopt(fd, SOL_IP, IP_TOS, &tos, sizeof(tos));
++#endif
+ 		/* Create a new session and link it into active list */
+ 		new_ts = make_new_session(fd);
+ 		if (new_ts) {

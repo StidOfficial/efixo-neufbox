@@ -1,0 +1,48 @@
+--- a/loginutils/login.c
++++ b/loginutils/login.c
+@@ -27,6 +27,8 @@ static const struct pam_conv conv = {
+ };
+ #endif
+ 
++#define DISABLE_FEATURE_TIMEOUT
++
+ enum {
+ 	TIMEOUT = 60,
+ 	EMPTY_USERNAME_COUNT = 10,
+@@ -253,6 +255,7 @@ static void motd(void)
+ 	}
+ }
+ 
++#ifndef DISABLE_FEATURE_TIMEOUT
+ static void alarm_handler(int sig UNUSED_PARAM)
+ {
+ 	/* This is the escape hatch!  Poor serial line users and the like
+@@ -266,6 +269,7 @@ static void alarm_handler(int sig UNUSED
+ 	ndelay_off(1);
+ 	_exit(EXIT_SUCCESS);
+ }
++#endif
+ 
+ int login_main(int argc, char **argv) MAIN_EXTERNALLY_VISIBLE;
+ int login_main(int argc UNUSED_PARAM, char **argv)
+@@ -297,8 +301,10 @@ int login_main(int argc UNUSED_PARAM, ch
+ #endif
+ 
+ 	username[0] = '\0';
++#ifndef DISABLE_FEATURE_TIMEOUT
+ 	signal(SIGALRM, alarm_handler);
+ 	alarm(TIMEOUT);
++#endif
+ 
+ 	/* More of suid paranoia if called by non-root: */
+ 	/* Clear dangerous stuff, set PATH */
+@@ -449,7 +455,9 @@ int login_main(int argc UNUSED_PARAM, ch
+ 		username[0] = '\0';
+ 	} /* while (1) */
+ 
++#ifndef DISABLE_FEATURE_TIMEOUT
+ 	alarm(0);
++#endif
+ 	/* We can ignore /etc/nologin if we are logging in as root,
+ 	 * it doesn't matter whether we are run by root or not */
+ 	if (pw->pw_uid != 0)

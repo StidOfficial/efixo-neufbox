@@ -1,0 +1,6 @@
+#!/bin/sh
+
+# logger
+logger -s -t hotspot -p daemon.info "== $0 $* =="
+
+iptables -D HOTSPOT_FILTER_FWD -s $FRAMED_IP_ADDRESS -m state --state NEW -j HOTSPOT_FILTER_AUTH

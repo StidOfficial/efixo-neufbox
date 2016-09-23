@@ -1,0 +1,11 @@
+--- a/include/linux/input.h
++++ b/include/linux/input.h
+@@ -543,6 +543,8 @@ struct input_absinfo {
+ #define KEY_BRL_DOT7		0x1f7
+ #define KEY_BRL_DOT8		0x1f8
+ 
++#define KEY_WPS_BUTTON		0x211   /* WiFi Protected Setup key */
++
+ /* We avoid low common keys in module aliases so they don't get huge. */
+ #define KEY_MIN_INTERESTING	KEY_MUTE
+ #define KEY_MAX			0x1ff

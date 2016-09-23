@@ -1,0 +1,91 @@
+--- a/net/netfilter/xt_TCPMSS.c
++++ b/net/netfilter/xt_TCPMSS.c
+@@ -41,6 +41,7 @@ optlen(const u_int8_t *opt, unsigned int
+ static int
+ tcpmss_mangle_packet(struct sk_buff **pskb,
+ 		     const struct xt_tcpmss_info *info,
++		     unsigned int in_mtu,
+ 		     unsigned int tcphoff,
+ 		     unsigned int minlen)
+ {
+@@ -76,7 +77,13 @@ tcpmss_mangle_packet(struct sk_buff **ps
+ 				       dst_mtu((*pskb)->dst));
+ 			return -1;
+ 		}
+-		newmss = dst_mtu((*pskb)->dst) - minlen;
++		if (in_mtu <= minlen) {
++			if (net_ratelimit())
++				printk(KERN_ERR "xt_TCPMSS: unknown or "
++				       "invalid path-MTU (%u)\n", in_mtu);
++			return -1;
++		}
++		newmss = min(dst_mtu((*pskb)->dst), in_mtu) - minlen;
+ 	} else
+ 		newmss = info->mss;
+ 
+@@ -137,6 +144,28 @@ tcpmss_mangle_packet(struct sk_buff **ps
+ 	return TCPOLEN_MSS;
+ }
+ 
++static u_int32_t tcpmss_reverse_mtu(const struct sk_buff *skb)
++{
++	struct iphdr *iph = skb->nh.iph;
++	struct flowi fl = {};
++	struct rtable *rt = NULL;
++	u_int32_t mtu     = ~0U;
++
++	fl.fl4_dst = iph->saddr;
++
++	ip_route_output_key(&rt, &fl);
++	if (rt != NULL) {
++		mtu = dst_mtu(&rt->u.dst);
++		dst_release(&rt->u.dst);
++		if (skb->dev) /* WAR for mutliroute */
++			mtu = min(mtu, skb->dev->mtu);
++
++		pr_debug("TCPMMS (dev:%s  ip:"NIPQUAD_FMT") reverse path MTU=%u\n",
++				skb->dev->name ?: "", NIPQUAD(iph->saddr), mtu);
++	}
++	return mtu;
++}
++
+ static unsigned int
+ xt_tcpmss_target4(struct sk_buff **pskb,
+ 		  const struct net_device *in,
+@@ -149,7 +178,9 @@ xt_tcpmss_target4(struct sk_buff **pskb,
+ 	__be16 newlen;
+ 	int ret;
+ 
+-	ret = tcpmss_mangle_packet(pskb, targinfo, iph->ihl * 4,
++	ret = tcpmss_mangle_packet(pskb, targinfo,
++				   tcpmss_reverse_mtu(*pskb),
++				   iph->ihl * 4,
+ 				   sizeof(*iph) + sizeof(struct tcphdr));
+ 	if (ret < 0)
+ 		return NF_DROP;
+@@ -163,6 +194,8 @@ xt_tcpmss_target4(struct sk_buff **pskb,
+ }
+ 
+ #if defined(CONFIG_IP6_NF_IPTABLES) || defined(CONFIG_IP6_NF_IPTABLES_MODULE)
++
++
+ static unsigned int
+ xt_tcpmss_target6(struct sk_buff **pskb,
+ 		  const struct net_device *in,
+@@ -171,6 +204,8 @@ xt_tcpmss_target6(struct sk_buff **pskb,
+ 		  const struct xt_target *target,
+ 		  const void *targinfo)
+ {
++	WARN_ON(1);
++#if 0
+ 	struct ipv6hdr *ipv6h = (*pskb)->nh.ipv6h;
+ 	u8 nexthdr;
+ 	int tcphoff;
+@@ -190,6 +225,7 @@ xt_tcpmss_target6(struct sk_buff **pskb,
+ 		ipv6h = (*pskb)->nh.ipv6h;
+ 		ipv6h->payload_len = htons(ntohs(ipv6h->payload_len) + ret);
+ 	}
++#endif
+ 	return XT_CONTINUE;
+ }
+ #endif

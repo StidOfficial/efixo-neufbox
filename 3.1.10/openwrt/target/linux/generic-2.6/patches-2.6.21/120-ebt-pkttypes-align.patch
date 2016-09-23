@@ -1,0 +1,27 @@
+--- a/net/bridge/netfilter/ebt_pkttype.c
++++ b/net/bridge/netfilter/ebt_pkttype.c
+@@ -23,12 +23,23 @@ static int ebt_filter_pkttype(const stru
+ 	return (skb->pkt_type != info->pkt_type) ^ info->invert;
+ }
+ 
++struct _xt_align
++{
++	u_int8_t u8;
++	u_int16_t u16;
++	u_int32_t u32;
++	u_int64_t u64;
++};
++
++#define XT_ALIGN(s) (((s) + (__alignof__(struct _xt_align)-1)) 	\
++			& ~(__alignof__(struct _xt_align)-1))
++
+ static int ebt_pkttype_check(const char *tablename, unsigned int hookmask,
+    const struct ebt_entry *e, void *data, unsigned int datalen)
+ {
+ 	struct ebt_pkttype_info *info = (struct ebt_pkttype_info *)data;
+ 
+-	if (datalen != EBT_ALIGN(sizeof(struct ebt_pkttype_info)))
++	if (datalen != XT_ALIGN(sizeof(struct ebt_pkttype_info)))
+ 		return -EINVAL;
+ 	if (info->invert != 0 && info->invert != 1)
+ 		return -EINVAL;

@@ -1,0 +1,16 @@
+--- a/fuzz.c
++++ b/fuzz.c
+@@ -322,11 +322,13 @@ int main(int argc, char **argv){
+     exit(BADOPS_EXIT);
+   }
+ 
++#if 0
+   //make sure this isn't being run as root.
+   if(getuid()==0){
+     fprintf(stderr,"*** Don't run this program as root! ***\n");
+     usage();
+   }
++#endif
+ 
+   //check that the program exists
+   if(optind==argc) //They didn't tell me what program to run

@@ -1,0 +1,28 @@
+# MadWifi configuration
+
+config ATHEROS_VERSION
+	string "Atheros Driver Version"
+	default '1.3.1.54'
+	depends on PACKAGE_kmod-atheros-wireless
+	help
+	  Use the testing version of MadWiFi, which is newer, but also less tested
+	  May contain unexpected bugs :)
+
+config ATHEROS_REMOVE_5G_SUPPORT
+	bool "Delete support for 5Ghz"
+	depends on PACKAGE_kmod-atheros-wireless
+	help
+
+choice
+	prompt "Rate control algorithm selection"
+	depends on PACKAGE_kmod-atheros-wireless
+	default ATHEROS_RCA
+	help
+	  This option controls how MadWifi chooses its bitrate.
+
+config ATHEROS_RCA
+	bool "Use Atheros Ratecontrol 11N"
+	help
+	  Proprietary ATheros RCA module control
+
+endchoice

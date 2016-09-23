@@ -1,0 +1,11 @@
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -2065,6 +2065,8 @@ config PCI
+ config PCI_DOMAINS
+ 	bool
+ 
++source "drivers/pci/pcie/Kconfig"
++
+ source "drivers/pci/Kconfig"
+ 
+ #

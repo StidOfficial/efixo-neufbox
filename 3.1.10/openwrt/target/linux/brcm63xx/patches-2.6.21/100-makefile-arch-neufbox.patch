@@ -1,0 +1,14 @@
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -275,6 +275,11 @@ load-$(CONFIG_MIPS_BRCM)	    += 0x800100
+ 
+ 
+ #
++# Neufbox board
++#
++cflags-$(CONFIG_BOARD_NEUFBOX4)	+= -DVOIP_DSCP=0x2D -DTV_DSCP=0x24
++
++#
+ # Cobalt Server
+ #
+ core-$(CONFIG_MIPS_COBALT)	+= arch/mips/cobalt/

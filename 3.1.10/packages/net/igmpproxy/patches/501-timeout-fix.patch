@@ -1,0 +1,58 @@
+--- a/src/igmpproxy.c
++++ b/src/igmpproxy.c
+@@ -38,6 +38,8 @@
+ 
+ #include "igmpproxy.h"
+ 
++#include <sys/sysinfo.h>
++
+ static const char Usage[] = 
+ "Usage: igmpproxy [-h] [-d] [-v [-v]] <configfile>\n"
+ "\n" 
+@@ -223,6 +225,20 @@ void igmpProxyCleanUp() {
+ 
+ }
+ 
++static void getuptime(struct timeval *tv)
++{
++#if 1
++	struct sysinfo si;
++
++	sysinfo( &si );
++
++	tv->tv_sec = si.uptime;
++	tv->tv_usec = 0;
++#else
++	gettimeofday(tv, NULL);
++#endif
++}
++
+ /**
+ *   Main daemon loop.
+ */
+@@ -240,7 +256,7 @@ void igmpProxyRun() {
+ 
+     // Initialize timer vars
+     difftime.tv_usec = 0;
+-    gettimeofday(&curtime, NULL);
++    getuptime(&curtime);
+     lasttime = curtime;
+ 
+     // First thing we send a membership query in downstream VIF's...
+@@ -303,14 +319,14 @@ void igmpProxyRun() {
+             /*
+              * If the select timed out, then there's no other
+              * activity to account for and we don't need to
+-             * call gettimeofday.
++             * call getuptime.
+              */
+             if (Rt == 0) {
+                 curtime.tv_sec = lasttime.tv_sec + secs;
+                 curtime.tv_usec = lasttime.tv_usec;
+                 Rt = -1; /* don't do this next time through the loop */
+             } else {
+-                gettimeofday(&curtime, NULL);
++                getuptime(&curtime);
+             }
+             difftime.tv_sec = curtime.tv_sec - lasttime.tv_sec;
+             difftime.tv_usec += curtime.tv_usec - lasttime.tv_usec;

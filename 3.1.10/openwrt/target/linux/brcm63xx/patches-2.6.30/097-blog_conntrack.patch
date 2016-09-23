@@ -1,0 +1,424 @@
+--- a/include/net/netfilter/nf_conntrack.h
++++ b/include/net/netfilter/nf_conntrack.h
+@@ -51,6 +51,11 @@ union nf_conntrack_expect_proto {
+ #include <linux/netfilter/nf_conntrack_sip.h>
+ #include <linux/netfilter/nf_conntrack_rtsp.h>
+ 
++
++#ifdef CONFIG_BCM63XX
++#define NF_ALG_BUFFER_SIZE 2000
++#endif /* CONFIG_BCM63XX */
++
+ /* per conntrack: application helper private data */
+ union nf_conntrack_help {
+ 	/* insert conntrack helper private data (master) here */
+@@ -75,7 +80,11 @@ union nf_conntrack_help {
+ struct nf_conntrack_helper;
+ 
+ /* Must be kept in sync with the classes defined by helpers */
++#ifdef CONFIG_BCM63XX
++#define NF_CT_MAX_EXPECT_CLASSES	4
++#else
+ #define NF_CT_MAX_EXPECT_CLASSES	3
++#endif
+ 
+ /* nf_conn feature for connections that have a helper */
+ struct nf_conn_help {
+@@ -102,6 +111,13 @@ struct nf_conn {
+ 	/* These are my tuples; original and reply */
+ 	struct nf_conntrack_tuple_hash tuplehash[IP_CT_DIR_MAX];
+ 
++#if defined(CONFIG_BCM63XX) 
++#if defined(CONFIG_BLOG)
++    unsigned int blog_key[IP_CT_DIR_MAX];   /* Associating blogged flows */
++#endif
++	struct list_head safe_list; /* bugfix for lost connections */
++#endif //defined(CONFIG_CONFIG_BCM63XX)
++
+ 	/* Have we seen traffic both ways yet? (bitset) */
+ 	unsigned long status;
+ 
+@@ -111,6 +127,13 @@ struct nf_conn {
+ 	/* Timer function; drops refcnt when it goes off. */
+ 	struct timer_list timeout;
+ 
++#if defined(CONFIG_BCM63XX)
++	struct list_head derived_connections; /* Used by master connection */
++	struct list_head derived_list; /* Used by child connection */
++	unsigned derived_timeout; /* 0 means no derived_timeout, 0xFFFFFFFF
++				   * means never timeout until master ct is
++				   * disconnected, others means timeout secs */
++#endif
+ #if defined(CONFIG_NF_CONNTRACK_MARK)
+ 	u_int32_t mark;
+ #endif
+--- a/net/netfilter/nf_conntrack_core.c
++++ b/net/netfilter/nf_conntrack_core.c
+@@ -30,6 +30,9 @@
+ #include <linux/socket.h>
+ #include <linux/mm.h>
+ #include <linux/rculist_nulls.h>
++#if defined(CONFIG_BCM63XX)
++#include <linux/blog.h>
++#endif
+ 
+ #include <net/netfilter/nf_conntrack.h>
+ #include <net/netfilter/nf_conntrack_l3proto.h>
+@@ -171,6 +174,10 @@ clean_from_lists(struct nf_conn *ct)
+ 	nf_ct_remove_expectations(ct);
+ }
+ 
++#if defined(CONFIG_BCM63XX)
++static void death_by_timeout(unsigned long ul_conntrack);
++#endif
++
+ static void
+ destroy_conntrack(struct nf_conntrack *nfct)
+ {
+@@ -178,7 +185,22 @@ destroy_conntrack(struct nf_conntrack *n
+ 	struct net *net = nf_ct_net(ct);
+ 	struct nf_conntrack_l4proto *l4proto;
+ 
++
++#if defined(CONFIG_BCM63XX)
++#if defined(CONFIG_BLOG)
++	pr_debug("destroy_conntrack(%p) blog keys[0x%08x,0x%08x]\n",
++		ct, ct->blog_key[IP_CT_DIR_ORIGINAL], ct->blog_key[IP_CT_DIR_REPLY]);
++
++	clear_bit(IPS_BLOG_BIT, &ct->status);   /* Disable further blogging */
++	if ( (ct->blog_key[IP_CT_DIR_ORIGINAL] != 0) || 
++			(ct->blog_key[IP_CT_DIR_REPLY] != 0) )
++		/* Conntrack going away, stop associated flows */
++		blog_notify(NULL, ct, BLOG_EVENT_STOP);
++#endif
++#else
+ 	pr_debug("destroy_conntrack(%p)\n", ct);
++#endif
++
+ 	NF_CT_ASSERT(atomic_read(&nfct->use) == 0);
+ 	NF_CT_ASSERT(!timer_pending(&ct->timeout));
+ 
+@@ -221,7 +243,26 @@ destroy_conntrack(struct nf_conntrack *n
+ 	spin_unlock_bh(&nf_conntrack_lock);
+ 
+ 	if (ct->master)
++	{
++#if defined(CONFIG_BCM63XX)
++		list_del(&ct->derived_list);
++#endif
+ 		nf_ct_put(ct->master);
++	}
++
++#if defined(CONFIG_BCM63XX)
++	/* Disconnect all child connections that have infinit timeout */
++	if (!list_empty(&ct->derived_connections)) {
++		struct nf_conn *child, *tmp;
++
++		list_for_each_entry_safe(child, tmp, &ct->derived_connections,
++			derived_list) {
++			if (child->derived_timeout == 0xFFFFFFFF &&
++			    del_timer(&child->timeout))
++				death_by_timeout((unsigned long)child);
++		}
++	}
++#endif
+ 
+ 	pr_debug("destroy_conntrack: returning ct=%p to slab\n", ct);
+ 	nf_conntrack_free(ct);
+@@ -549,6 +590,13 @@ struct nf_conn *nf_conntrack_alloc(struc
+ 	 */
+ 	memset(&ct->tuplehash[IP_CT_DIR_MAX], 0,
+ 	       sizeof(*ct) - offsetof(struct nf_conn, tuplehash[IP_CT_DIR_MAX]));
++#ifdef CONFIG_BCM63XX
++	INIT_LIST_HEAD(&ct->derived_connections);
++#endif
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	pr_debug("nf_conntrack_alloc: ct<%p> BLOGible\n", ct );
++	set_bit(IPS_BLOG_BIT, &ct->status);  /* Enable conntrack blogging */
++#endif
+ 	ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple = *orig;
+ 	ct->tuplehash[IP_CT_DIR_ORIGINAL].hnnode.pprev = NULL;
+ 	ct->tuplehash[IP_CT_DIR_REPLY].tuple = *repl;
+@@ -621,6 +669,13 @@ init_conntrack(struct net *net,
+ 		/* Welcome, Mr. Bond.  We've been expecting you... */
+ 		__set_bit(IPS_EXPECTED_BIT, &ct->status);
+ 		ct->master = exp->master;
++#if defined(CONFIG_BCM63XX)
++		list_add(&ct->derived_list,
++			 &exp->master->derived_connections);
++		if (exp->flags & NF_CT_EXPECT_DERIVED_TIMEOUT) {
++			ct->derived_timeout = exp->derived_timeout;
++		}
++#endif
+ 		if (exp->helper) {
+ 			help = nf_ct_helper_ext_add(ct, GFP_ATOMIC);
+ 			if (help)
+@@ -711,6 +766,32 @@ resolve_normal_ct(struct net *net,
+ 	}
+ 	skb->nfct = &ct->ct_general;
+ 	skb->nfctinfo = *ctinfo;
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	{
++		struct nf_conn_help * help = nfct_help(ct);
++
++		if ( (help != (struct nf_conn_help *)NULL) &&
++			 (help->helper != (struct nf_conntrack_helper *)NULL) )
++		{
++			pr_debug("nf_conntrack_in: skb<%p> ct<%p> helper<%s> found\n",
++						skb, ct, help->helper->name);
++			clear_bit(IPS_BLOG_BIT, &ct->status);
++		}
++		if (test_bit(IPS_BLOG_BIT, &ct->status))    /* OK to blog ? */
++		{
++			pr_debug("nf_conntrack_in: skb<%p> blog<%p> ct<%p>\n",
++						skb, skb->blog_p, ct );
++			blog_nfct(skb, ct);                     /* Blog conntrack */
++		}
++		else
++		{
++			pr_debug("nf_conntrack_in: skb<%p> ct<%p> NOT BLOGible<%p>\n",
++						skb, ct, skb->blog_p );
++			blog_free(skb);                         /* No blogging */
++		}
++	}
++#endif
++
+ 	return ct;
+ }
+ 
+@@ -1074,12 +1155,26 @@ static void nf_conntrack_cleanup_init_ne
+ 
+ static void nf_conntrack_cleanup_net(struct net *net)
+ {
++#if defined(CONFIG_BCM63XX)
++	int try_counter = 0;
++	unsigned long start = jiffies;
++	unsigned long end = start + HZ;
++#endif
+ 	nf_ct_event_cache_flush(net);
+ 	nf_conntrack_ecache_fini(net);
+  i_see_dead_people:
+ 	nf_conntrack_flush(net, 0, 0);
+ 	if (atomic_read(&net->ct.count) != 0) {
+-		schedule();
++#ifdef CONFIG_BCM63XX
++		if (jiffies >= end) {
++			printk("waiting for %d conntrack to be cleaned, "
++			       "tried %d times\n",
++			       atomic_read(&net->ct.count), try_counter);
++			end += HZ;
++		}
++		try_counter++;
++#endif
++	schedule();
+ 		goto i_see_dead_people;
+ 	}
+ 	/* wait until all references to nf_conntrack_untracked are dropped */
+@@ -1091,6 +1186,13 @@ static void nf_conntrack_cleanup_net(str
+ 	nf_conntrack_acct_fini(net);
+ 	nf_conntrack_expect_fini(net);
+ 	free_percpu(net->ct.stat);
++#if defined(CONFIG_BCM63XX)
++	end = jiffies;
++	if (end - start > HZ) {
++		printk("nf_conntrack took %lu milliseconds to clean up\n",
++		       (end - start) * 1000 / HZ);
++	}
++#endif
+ }
+ 
+ /* Mishearing the voices in his head, our hero wonders how he's
+@@ -1289,6 +1391,10 @@ static int nf_conntrack_init_net(struct
+ 	/*  - and look it like as a confirmed connection */
+ 	set_bit(IPS_CONFIRMED_BIT, &nf_conntrack_untracked.status);
+ 
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	blog_refresh_fn = (blog_refresh_t)__nf_ct_refresh_acct;
++#endif
++
+ 	return 0;
+ 
+ err_acct:
+--- a/include/net/netfilter/nf_conntrack_expect.h
++++ b/include/net/netfilter/nf_conntrack_expect.h
+@@ -43,6 +43,12 @@ struct nf_conntrack_expect
+ 	/* Expectation class */
+ 	unsigned int class;
+ 
++#if defined(CONFIG_BCM63XX)
++	unsigned derived_timeout; /* 0 means no derived_timeout, 0xFFFFFFFF
++				   * means never timeout until master ct is
++				   * disconnected, others means timeout secs */
++#endif
++
+ #ifdef CONFIG_NF_NAT_NEEDED
+ 	__be32 saved_ip;
+ 	/* This is the original per-proto part, used to map the
+@@ -74,6 +80,9 @@ struct nf_conntrack_expect_policy
+ 
+ #define NF_CT_EXPECT_PERMANENT	0x1
+ #define NF_CT_EXPECT_INACTIVE	0x2
++#ifdef CONFIG_BCM63XX
++#define NF_CT_EXPECT_DERIVED_TIMEOUT 0x80
++#endif
+ 
+ int nf_conntrack_expect_init(struct net *net);
+ void nf_conntrack_expect_fini(struct net *net);
+--- a/net/netfilter/nf_conntrack_ftp.c
++++ b/net/netfilter/nf_conntrack_ftp.c
+@@ -33,6 +33,9 @@ MODULE_ALIAS_NFCT_HELPER("ftp");
+ 
+ /* This is slow, but it's simple. --RR */
+ static char *ftp_buffer;
++#ifdef CONFIG_BCM63XX
++static char *ftp_big_buffer = NULL;
++#endif /* CONFIG_BCM63XX*/
+ 
+ static DEFINE_SPINLOCK(nf_ftp_lock);
+ 
+@@ -355,7 +358,7 @@ static int help(struct sk_buff *skb,
+ 	const struct tcphdr *th;
+ 	struct tcphdr _tcph;
+ 	const char *fb_ptr;
+-	int ret;
++	int ret = NF_ACCEPT;
+ 	u32 seq;
+ 	int dir = CTINFO2DIR(ctinfo);
+ 	unsigned int uninitialized_var(matchlen), uninitialized_var(matchoff);
+@@ -508,6 +511,12 @@ out_update_nl:
+ 	if (ends_in_nl)
+ 		update_nl_seq(ct, seq, ct_ftp_info, dir, skb);
+  out:
++#ifdef CONFIG_BCM63XX
++ 	if (ftp_big_buffer) {
++		kfree(ftp_big_buffer);
++		ftp_big_buffer = NULL;
++	}
++#endif /* CONFIG_BCM63XX */
+ 	spin_unlock_bh(&nf_ftp_lock);
+ 	return ret;
+ }
+@@ -544,7 +553,11 @@ static int __init nf_conntrack_ftp_init(
+ 	int i, j = -1, ret = 0;
+ 	char *tmpname;
+ 
++#ifdef CONFIG_BCM63XX
++	ftp_buffer = kmalloc(NF_ALG_BUFFER_SIZE, GFP_KERNEL);
++#else /* CONFIG_BCM63XX */
+ 	ftp_buffer = kmalloc(65536, GFP_KERNEL);
++#endif /* CONFIG_BCM63XX */
+ 	if (!ftp_buffer)
+ 		return -ENOMEM;
+ 
+--- a/net/netfilter/nf_conntrack_proto_tcp.c
++++ b/net/netfilter/nf_conntrack_proto_tcp.c
+@@ -29,13 +29,21 @@
+ #include <net/netfilter/ipv4/nf_conntrack_ipv4.h>
+ #include <net/netfilter/ipv6/nf_conntrack_ipv6.h>
+ 
++#if defined(CONFIG_BCM63XX)
++#include <linux/blog.h>
++#endif
++
+ /* Protects ct->proto.tcp */
+ static DEFINE_RWLOCK(tcp_lock);
+ 
++#if defined(CONFIG_BCM63XX)
++static int nf_ct_tcp_be_liberal __read_mostly = 1;
++#else
+ /* "Be conservative in what you do,
+     be liberal in what you accept from others."
+     If it's non-zero, we mark only out of window RST segments as INVALID. */
+ static int nf_ct_tcp_be_liberal __read_mostly = 0;
++#endif
+ 
+ /* If it is set to zero, we disable picking up already established
+    connections. */
+@@ -977,6 +985,18 @@ static int tcp_packet(struct nf_conn *ct
+ 		 old_state, new_state);
+ 
+ 	ct->proto.tcp.state = new_state;
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	if( th->fin )       /* Abort and make this conntrack not BLOG eligible */
++	{
++		blog_notify(NULL, ct, BLOG_EVENT_STOP);
++		clear_bit(IPS_BLOG_BIT, &ct->status);
++	}
++	if ( ct->proto.tcp.state !=  TCP_CONNTRACK_ESTABLISHED )
++	{
++		blog_free( (struct sk_buff *)skb ); /* abort blogging this packet */
++	}
++#endif
++
+ 	if (old_state != new_state
+ 	    && new_state == TCP_CONNTRACK_FIN_WAIT)
+ 		ct->proto.tcp.seen[dir].flags |= IP_CT_TCP_FLAG_CLOSE_INIT;
+@@ -1015,6 +1035,15 @@ static int tcp_packet(struct nf_conn *ct
+ 		set_bit(IPS_ASSURED_BIT, &ct->status);
+ 		nf_conntrack_event_cache(IPCT_STATUS, ct);
+ 	}
++#ifdef CONFIG_BCM63XX
++        if (new_state == TCP_CONNTRACK_ESTABLISHED) {
++                if (ct->derived_timeout == 0xFFFFFFFF){
++                        timeout = 0xFFFFFFFF - jiffies;
++                } else if(ct->derived_timeout > 0) {
++                        timeout = ct->derived_timeout;
++                }
++        }
++#endif
+ 	nf_ct_refresh_acct(ct, ctinfo, skb, timeout);
+ 
+ 	return NF_ACCEPT;
+--- a/net/netfilter/nf_conntrack_proto_udp.c
++++ b/net/netfilter/nf_conntrack_proto_udp.c
+@@ -25,8 +25,17 @@
+ #include <net/netfilter/ipv4/nf_conntrack_ipv4.h>
+ #include <net/netfilter/ipv6/nf_conntrack_ipv6.h>
+ 
++#if defined(CONFIG_BCM63XX)
++#include <linux/blog.h>
++#endif
++
+ static unsigned int nf_ct_udp_timeout __read_mostly = 30*HZ;
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++/*RFC 4008 */
++#define  nf_ct_udp_timeout_stream  blog_nat_udp_def_idle_timeout
++#else
+ static unsigned int nf_ct_udp_timeout_stream __read_mostly = 180*HZ;
++#endif
+ 
+ static bool udp_pkt_to_tuple(const struct sk_buff *skb,
+ 			     unsigned int dataoff,
+@@ -74,7 +83,17 @@ static int udp_packet(struct nf_conn *ct
+ 	/* If we've seen traffic both ways, this is some kind of UDP
+ 	   stream.  Extend timeout. */
+ 	if (test_bit(IPS_SEEN_REPLY_BIT, &ct->status)) {
++#ifdef CONFIG_BCM63XX
++                unsigned timeout = nf_ct_udp_timeout_stream;
++                if (ct->derived_timeout == 0xFFFFFFFF){
++                        timeout = 0xFFFFFFFF - jiffies;
++                } else if(ct->derived_timeout > 0) {
++                        timeout = ct->derived_timeout;
++                }
++                nf_ct_refresh_acct(ct, ctinfo, skb, timeout);
++#else
+ 		nf_ct_refresh_acct(ct, ctinfo, skb, nf_ct_udp_timeout_stream);
++#endif
+ 		/* Also, more likely to be important, and not a probe */
+ 		if (!test_and_set_bit(IPS_ASSURED_BIT, &ct->status))
+ 			nf_conntrack_event_cache(IPCT_STATUS, ct);
+--- a/include/linux/netfilter/nf_conntrack_common.h
++++ b/include/linux/netfilter/nf_conntrack_common.h
+@@ -73,6 +73,12 @@ enum ip_conntrack_status {
+ 	/* Connection has fixed timeout. */
+ 	IPS_FIXED_TIMEOUT_BIT = 10,
+ 	IPS_FIXED_TIMEOUT = (1 << IPS_FIXED_TIMEOUT_BIT),
++
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++    /* Conntrack eligible for Blogging */
++    IPS_BLOG_BIT = 11,
++    IPS_BLOG = (1 << IPS_BLOG_BIT),
++#endif
+ };
+ 
+ /* Connection tracking event bits */

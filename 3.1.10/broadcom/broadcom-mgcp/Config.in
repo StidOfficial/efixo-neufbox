@@ -1,0 +1,8 @@
+# Broadcom vodsl configuration
+
+config VODSL_VERSION
+    string "Broadcom vodsl (mgcp) client version"
+    default 'legacy'
+    depends on PACKAGE_kmod-broadcom-endpointdrv
+    help
+          Choose the version of vodsl to compile into the firmware

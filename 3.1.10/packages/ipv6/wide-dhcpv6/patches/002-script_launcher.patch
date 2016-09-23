@@ -1,0 +1,196 @@
+--- a/dhcp6c.c
++++ b/dhcp6c.c
+@@ -1827,14 +1827,18 @@ client6_recvreply(ifp, dh6, len, optinfo
+ 		}
+ 	}
+ 
+-	/*
+-	 * Call the configuration script, if specified, to handle various
+-	 * configuration parameters.
+-	 */
+-	if (ifp->scriptpath != NULL && strlen(ifp->scriptpath) != 0) {
+-		dprintf(LOG_DEBUG, FNAME, "executes %s", ifp->scriptpath);
+-		client6_script(ifp->scriptpath, state, optinfo);
++	if (!TAILQ_EMPTY(&optinfo->prefix_list)) {
++		struct dhcp6_listval *d;
++		int i = 0;
++
++		for (d = TAILQ_FIRST(&optinfo->prefix_list); d;
++		     d = TAILQ_NEXT(d, link), i++) {
++			info_printf("Prefix [%d] %s/%d",
++			    i, in6addr2str(&d->val_prefix6.addr, 0), &d->val_prefix6.plen);
++		}
+ 	}
++	else
++		info_printf("No prefix for the moment.");
+ 
+ 	/*
+ 	 * Set refresh timer for configuration information specified in
+@@ -1843,6 +1847,7 @@ client6_recvreply(ifp, dh6, len, optinfo
+ 	 * default otherwise.
+ 	 */
+ 	if (state == DHCP6S_INFOREQ) {
++		info_printf("State == DHCP6S_INFOREQ");
+ 		int64_t refreshtime = DHCP6_IRT_DEFAULT;
+ 
+ 		if (optinfo->refreshtime != DH6OPT_REFRESHTIME_UNDEF)
+@@ -1882,15 +1887,19 @@ client6_recvreply(ifp, dh6, len, optinfo
+ 
+ 	/* update stateful configuration information */
+ 	if (state != DHCP6S_RELEASE) {
++		info_printf("State != DHCP6S_RELEASE");
++		memset(iapd_prefix, '\0', sizeof(iapd_prefix));
+ 		update_ia(IATYPE_PD, &optinfo->iapd_list, ifp,
+ 		    &optinfo->serverID, ev->authparam);
+ 		update_ia(IATYPE_NA, &optinfo->iana_list, ifp,
+ 		    &optinfo->serverID, ev->authparam);
++		info_printf("prefix renseigne : %s", iapd_prefix);
+ 	}
+ 
+ 	dhcp6_remove_event(ev);
+ 
+ 	if (state == DHCP6S_RELEASE) {
++		info_printf("State == DHCP6S_RELEASE");
+ 		/*
+ 		 * When the client receives a valid Reply message in response
+ 		 * to a Release message, the client considers the Release event
+@@ -1903,6 +1912,16 @@ client6_recvreply(ifp, dh6, len, optinfo
+ 
+ 	dprintf(LOG_DEBUG, FNAME, "got an expected reply, sleeping.");
+ 
++	/*
++	 * Call the configuration script, if specified, to handle various
++	 * configuration parameters.
++	 */
++	if (ifp->scriptpath != NULL && strlen(ifp->scriptpath) != 0) {
++		dprintf(LOG_DEBUG, FNAME, "executes %s", ifp->scriptpath);
++		client6_script(ifp->scriptpath, state, optinfo);
++	}
++
++
+ 	if (infreq_mode) {
+ 		exit_ok = 1;
+ 		free_resources(NULL);
+--- a/dhcp6c.h
++++ b/dhcp6c.h
+@@ -35,3 +35,5 @@
+ extern struct dhcp6_timer *client6_timo __P((void *));
+ extern int client6_start __P((struct dhcp6_if *));
+ extern void client6_send __P((struct dhcp6_event *));
++
++char iapd_prefix[32];
+--- a/dhcp6c_ia.c
++++ b/dhcp6c_ia.c
+@@ -159,6 +159,9 @@ update_ia(iatype, ialist, ifp, serverid,
+ 					    "failed to update a prefix %s/%d",
+ 					    in6addr2str(&siav->val_prefix6.addr, 0),
+ 					    siav->val_prefix6.plen);
++				} else {
++					snprintf(iapd_prefix, sizeof(iapd_prefix), "%s",
++					    in6addr2str(&siav->val_prefix6.addr, 0));
+ 				}
+ 				break;
+ 			case DHCP6_LISTVAL_STATEFULADDR6:
+--- a/dhcp6c_script.c
++++ b/dhcp6c_script.c
+@@ -57,6 +57,7 @@
+ #include <errno.h>
+ 
+ #include "dhcp6.h"
++#include "dhcp6c.h"
+ #include "config.h"
+ #include "common.h"
+ 
+@@ -71,6 +72,7 @@ static char nispserver_str[] = "new_nisp
+ static char nispname_str[] = "new_nisp_name";
+ static char bcmcsserver_str[] = "new_bcmcs_servers";
+ static char bcmcsname_str[] = "new_bcmcs_name";
++static char prefix_str[] = "prefix_iapd";
+ 
+ int
+ client6_script(scriptpath, state, optinfo)
+@@ -84,7 +86,7 @@ client6_script(scriptpath, state, optinf
+ 	int nispservers, nispnamelen;
+ 	int bcmcsservers, bcmcsnamelen;
+ 	char **envp, *s;
+-	char reason[] = "REASON=NBI";
++	char reason[64];
+ 	struct dhcp6_listval *v;
+ 	pid_t pid, wpid;
+ 
+@@ -92,6 +94,39 @@ client6_script(scriptpath, state, optinf
+ 	if (scriptpath == NULL || strlen(scriptpath) == 0)
+ 		return -1;
+ 
++	/* set reason */
++
++	switch(state) {
++		case DHCP6S_INIT:
++			snprintf(reason, sizeof(reason), "REASON=%s", "INIT");
++			break;
++		case DHCP6S_SOLICIT:
++			snprintf(reason, sizeof(reason), "REASON=%s", "SOLICIT");
++			break;
++		case DHCP6S_INFOREQ:
++			snprintf(reason, sizeof(reason), "REASON=%s", "INFOREQ");
++			break;
++		case DHCP6S_REQUEST:
++			snprintf(reason, sizeof(reason), "REASON=%s", "REQUEST");
++			break;
++		case DHCP6S_RENEW:
++			snprintf(reason, sizeof(reason), "REASON=%s", "RENEW");
++			break;
++		case DHCP6S_REBIND:
++			snprintf(reason, sizeof(reason), "REASON=%s", "REBIND");
++			break;
++		case DHCP6S_RELEASE:
++			snprintf(reason, sizeof(reason), "REASON=%s", "RELEASE");
++			break;
++		case DHCP6S_IDLE:
++			snprintf(reason, sizeof(reason), "REASON=%s", "IDLE");
++			break;
++		default:
++			snprintf(reason, sizeof(reason), "REASON=%s", "UNKNOWN"); /* XXX */
++	}
++
++	dprintf(LOG_NOTICE, FNAME, "%s", reason);
++
+ 	/* initialize counters */
+ 	dnsservers = 0;
+ 	ntpservers = 0;
+@@ -154,6 +189,9 @@ client6_script(scriptpath, state, optinf
+ 	}
+ 	envc += bcmcsnamelen ? 1 : 0;
+ 
++	/* add prefix */
++	++envc;
++
+ 	/* allocate an environments array */
+ 	if ((envp = malloc(sizeof (char *) * envc)) == NULL) {
+ 		dprintf(LOG_NOTICE, FNAME,
+@@ -173,6 +211,7 @@ client6_script(scriptpath, state, optinf
+ 		ret = -1;
+ 		goto clean;
+ 	}
++	dprintf(LOG_NOTICE, FNAME, "env REASON = %s", envp[i]);
+ 	/* "var=addr1 addr2 ... addrN" + null char for termination */
+ 	if (dnsservers) {
+ 		elen = sizeof (dnsserver_str) +
+@@ -379,6 +418,17 @@ client6_script(scriptpath, state, optinf
+ 			strlcat(s, " ", elen);
+ 		}
+ 	}
++	if (iapd_prefix[0] != '\0') {
++		elen = sizeof (prefix_str) + strlen(iapd_prefix) + 1;
++		if ((s = envp[i++] = malloc(elen)) == NULL) {
++			dprintf(LOG_NOTICE, FNAME,
++			    "failed to allocate strings for BCMC domain name");
++			ret = -1;
++			goto clean;
++		}
++		memset(s, 0, elen);
++		snprintf(s, elen, "%s=%s", prefix_str, iapd_prefix);
++	}
+ 
+ 	/* launch the script */
+ 	pid = fork();

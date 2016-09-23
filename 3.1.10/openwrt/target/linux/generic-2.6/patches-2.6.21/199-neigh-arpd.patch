@@ -1,0 +1,20 @@
+--- a/net/core/neighbour.c
++++ b/net/core/neighbour.c
+@@ -831,7 +831,7 @@ out:
+ 		call_netevent_notifiers(NETEVENT_NEIGH_UPDATE, neigh);
+ 
+ #ifdef CONFIG_ARPD
+-	if (notify && neigh->parms->app_probes)
++	if (notify)
+ 		neigh_app_notify(neigh);
+ #endif
+ 	neigh_release(neigh);
+@@ -1064,7 +1064,7 @@ out:
+ 	if (notify)
+ 		call_netevent_notifiers(NETEVENT_NEIGH_UPDATE, neigh);
+ #ifdef CONFIG_ARPD
+-	if (notify && neigh->parms->app_probes)
++	if (notify)
+ 		neigh_app_notify(neigh);
+ #endif
+ 	return err;

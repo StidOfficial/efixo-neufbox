@@ -1,0 +1,28 @@
+--- a/drivers/net/bcmxtmrt.c
++++ b/drivers/net/bcmxtmrt.c
+@@ -72,6 +72,7 @@
+ 
+ /* Externs. */
+ extern unsigned int bcm63xx_get_memory_size(void);
++extern int board_get_mac_address(UINT8 *pucaMacAddr, UINT32 ulId);
+ 
+ 
+ /* Prototypes. */
+@@ -2023,7 +2024,7 @@ static int DoCreateDeviceReq( PXTMRT_CRE
+         default: /* bridge, MER, PPPoE */
+             /* Read and display the MAC address. */
+             dev->dev_addr[0] = 0xff;
+-            kerSysGetMacAddress( dev->dev_addr,((UINT32)pDevCtx & 0x00ffffff) |
++            board_get_mac_address( dev->dev_addr,((UINT32)pDevCtx & 0x00ffffff) |
+                 0x10000000 );
+             if( (dev->dev_addr[0] & 0x01) == 0x01 )
+             {
+@@ -2568,8 +2569,6 @@ static int DoDeleteDeviceReq( PBCMXTMRT_
+         {
+             pGi->pDevCtxs[i] = NULL;
+ 
+-            kerSysReleaseMacAddress( pDevCtx->pDev->dev_addr );
+-
+             unregister_netdev( pDevCtx->pDev );
+             free_netdev( pDevCtx->pDev );
+ 

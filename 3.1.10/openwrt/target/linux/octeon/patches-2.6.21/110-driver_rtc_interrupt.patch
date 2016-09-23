@@ -1,0 +1,21 @@
+--- a/drivers/char/rtc.c
++++ b/drivers/char/rtc.c
+@@ -944,6 +944,18 @@ static int __init rtc_init(void)
+ #endif
+ #endif
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++    extern int octeon_get_southbridge_interrupt(void);
++    /* Most Octeon boards do not have a RTC. The problem is many also don't
++        have PCI, so we can't probe. Use the Via southbridge interrupt to
++        key if we should have a RTC */
++    if (octeon_get_southbridge_interrupt() == 0)
++    {
++        printk("Skipping probe of RTC since we don't have a southbridge.\n");
++        return -1;
++    }
++#endif
++
+ #ifdef __sparc__
+ 	for_each_ebus(ebus) {
+ 		for_each_ebusdev(edev, ebus) {

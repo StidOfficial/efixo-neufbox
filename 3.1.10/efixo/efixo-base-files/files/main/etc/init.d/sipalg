@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+
+logger "[sipalg] $$ $action"
+
+start() {
+	insmod nf_nat_sip
+}
+
+stop() {
+	rmmod nf_nat_sip
+}
+

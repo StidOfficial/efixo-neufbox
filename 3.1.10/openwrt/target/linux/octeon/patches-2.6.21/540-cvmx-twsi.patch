@@ -1,0 +1,21 @@
+--- a/arch/mips/cavium-octeon/gpl-executive/cvmx-linux-kernel-exports.c
++++ b/arch/mips/cavium-octeon/gpl-executive/cvmx-linux-kernel-exports.c
+@@ -18,6 +18,7 @@
+ #include "cvmx-spi.h"
+ #include "cvmx-sysinfo.h"
+ #include "cvmx-tra.h"
++#include "cvmx-twsi.h" 
+ #include "cvmx-warn.h"
+ 
+ extern CVMX_SHARED __cvmx_cmd_queue_all_state_t *__cvmx_cmd_queue_state_ptr;
+@@ -97,6 +98,10 @@ EXPORT_SYMBOL(cvmx_tra_read);
+ EXPORT_SYMBOL(cvmx_tra_decode_text);
+ EXPORT_SYMBOL(cvmx_tra_display);
+ 
++/* Exports for cvmx-twsi.c */
++EXPORT_SYMBOL(cvmx_twsix_read8);
++EXPORT_SYMBOL(cvmx_twsix_write8);
++
+ /* Exports for cvmx-warn.c */
+ EXPORT_SYMBOL(cvmx_warn);
+ 

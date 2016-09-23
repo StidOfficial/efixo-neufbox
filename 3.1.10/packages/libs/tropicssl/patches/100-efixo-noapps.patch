@@ -1,0 +1,10 @@
+--- a/Makefile
++++ b/Makefile
+@@ -6,7 +6,6 @@ PREFIX=tropicssl_
+ 
+ all:
+ 	make -C library all
+-	make -C programs all
+ 
+ install:
+ 	mkdir -p $(DESTDIR)/include/tropicssl

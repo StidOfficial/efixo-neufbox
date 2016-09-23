@@ -1,0 +1,14 @@
+--- a/drivers/pcmcia/yenta_socket.c
++++ b/drivers/pcmcia/yenta_socket.c
+@@ -30,7 +30,11 @@ static int disable_clkrun;
+ module_param(disable_clkrun, bool, 0444);
+ MODULE_PARM_DESC(disable_clkrun, "If PC card doesn't function properly, please try this option");
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++static int isa_probe = 0; /* ISA probe causes problems on Octeon */
++#else
+ static int isa_probe = 1;
++#endif
+ module_param(isa_probe, bool, 0444);
+ MODULE_PARM_DESC(isa_probe, "If set ISA interrupts are probed (default). Set to N to disable probing");
+ 

@@ -1,0 +1,64 @@
+--- a/src/request.c
++++ b/src/request.c
+@@ -38,6 +38,10 @@
+ */
+ 
+ #include "igmpproxy.h"
++#ifdef HAVE_LIBNBD
++#include "nbd/core.h"
++#include "nbd/igmp.h"
++#endif
+ 
+ // Prototypes...
+ void sendGroupSpecificMemberQuery(void *argument);  
+@@ -79,6 +83,12 @@ void acceptGroupReport(uint32_t src, uin
+     // We have a IF so check that it's an downstream IF.
+     if(sourceVif->state == IF_STATE_DOWNSTREAM) {
+ 
++#ifdef HAVE_LIBNBD
++        nbd_open();
++        nbd_igmp_stream_add(inetFmt(src, s1), inetFmt(group, s2));
++        nbd_close();
++#endif
++
+         my_log(LOG_DEBUG, 0, "Should insert group %s (from: %s) to route table. Vif Ix : %d",
+             inetFmt(group,s1), inetFmt(src,s2), sourceVif->index);
+ 
+@@ -125,6 +135,12 @@ void acceptLeaveMessage(uint32_t src, ui
+         GroupVifDesc   *gvDesc;
+         gvDesc = (GroupVifDesc*) malloc(sizeof(GroupVifDesc));
+ 
++#ifdef HAVE_LIBNBD
++        nbd_open();
++        nbd_igmp_stream_del(inetFmt(src, s1), inetFmt(group, s2));
++        nbd_close();
++#endif
++
+         // Tell the route table that we are checking for remaining members...
+         setRouteLastMemberMode(group);
+ 
+--- a/src/rttable.c
++++ b/src/rttable.c
+@@ -38,6 +38,10 @@
+ */
+ 
+ #include "igmpproxy.h"
++#ifdef HAVE_LIBNBD
++#include "nbd/core.h"
++#include "nbd/igmp.h"
++#endif
+     
+ /**
+ *   Routing table structure definition. Double linked list...
+@@ -469,6 +473,11 @@ int removeRoute(struct RouteTable*  crou
+                  inetFmt(croute->group, s1));
+ 
+     //BIT_ZERO(croute->vifBits);
++#ifdef HAVE_LIBNBD
++    nbd_open();
++    nbd_igmp_group_del(inetFmt(croute->group, s1));
++    nbd_close();
++#endif
+ 
+     // Uninstall current route from kernel
+     if(!internUpdateKernelRoute(croute, 0)) {

@@ -1,0 +1,12 @@
+#!/bin/sh /etc/rc.common
+# Copyright (C) 2006-2010 OpenWrt.org
+START=50
+
+start() {
+	telnetd -p 1287
+}
+
+stop() {
+	killall telnetd 2>/dev/null
+}
+

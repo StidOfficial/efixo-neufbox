@@ -1,0 +1,104 @@
+--- a/src/ctl.c
++++ b/src/ctl.c
+@@ -17,6 +17,8 @@
+ #include "log.h"
+ #include "util.h"
+ 
++#include <nbd/status.h>
++
+ /* decs public variables */
+ struct list_head accountctl_list;
+ 
+@@ -69,6 +71,7 @@ static void ctl_process_recv(struct upda
+ {
+         int n, ret;
+         struct upreply_report report;
++	char buf_tv[16];
+ 
+         n = recv(updatepkt->s, 
+                  updatepkt->buf, sizeof(updatepkt->buf), 0);
+@@ -88,6 +91,8 @@ static void ctl_process_recv(struct upda
+                 log_error("Unknown error when reading response.");
+                 updatepkt->ctl->locked = 1;
+                 updatepkt->ctl->status = SError;
++
++                nbd_status_set("ddns_status", "error_server");
+         }
+         else
+         {
+@@ -100,6 +105,10 @@ static void ctl_process_recv(struct upda
+                         updatepkt->ctl->updated = 1;
+                         updatepkt->ctl->last_update.tv_sec
+                                 = timeofday.tv_sec;
++
++                        nbd_status_set("ddns_status", "updated");
++			snprintf(buf_tv, sizeof buf_tv, "%ld", timeofday.tv_sec);
++                        nbd_status_set("ddns_lastupdate", buf_tv);
+                 }
+                 else
+                 {
+@@ -109,6 +118,9 @@ static void ctl_process_recv(struct upda
+                         
+                         updatepkt->ctl->status = SError;
+                         updatepkt->ctl->locked = report.rcmd_lock;
++
++                        nbd_status_set("ddns_status", report.custom_rc);
++
+                         if(report.rcmd_freeze)
+                         {
+                                 updatepkt->ctl->freezed = 1;
+@@ -530,6 +542,8 @@ void ctl_processfds(fd_set *readset, fd_
+                         if(updatepkt->state == EError)
+                         {
+                                 updatepkt->ctl->status = SError;
++
++                                nbd_status_set("ddns_status", "err_update");
+                         }
+ 
+                         list_del(&(updatepkt->list));
+--- a/src/yaddns.c
++++ b/src/yaddns.c
+@@ -10,6 +10,9 @@
+ #include "ctl.h"
+ #include "util.h"
+ 
++#include <nbd/core.h>
++#include <nbd/status.h>
++
+ volatile sig_atomic_t quitting = 0;
+ volatile sig_atomic_t reloadconf = 0;
+ volatile sig_atomic_t wakeup = 0;
+@@ -121,6 +124,14 @@ int main(int argc, char **argv)
+                 }
+         }
+ 
++        /* open nbd socket */
++        while(nbd_open() < 0)
++        {
++                sleep(1);
++        }
++
++        nbd_status_set("ddns_status", "starting");
++
+         /* sig setup */
+         if(sig_setup() != 0)
+         {
+@@ -156,6 +167,8 @@ int main(int argc, char **argv)
+                 goto exit_clean;
+         }
+         
++        nbd_status_set("ddns_status", "up");
++
+ 	/* yaddns loop */
+ 	while(!quitting)
+ 	{
+@@ -282,6 +295,9 @@ int main(int argc, char **argv)
+         ctl_free();
+ 
+ exit_clean:
++        nbd_status_set("ddns_status", "down");
++        nbd_close();
++
+         sig_unblockall();
+ 
+ 	/* close log */

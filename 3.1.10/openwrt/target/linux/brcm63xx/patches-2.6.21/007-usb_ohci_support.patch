@@ -1,0 +1,33 @@
+From f7416412febd7efc1d33c7506c81265719368667 Mon Sep 17 00:00:00 2001
+From: Maxime Bizon <mbizon@freebox.fr>
+Date: Mon, 21 Jul 2008 14:58:19 +0200
+Subject: [PATCH] [MIPS] BCM63XX: Add USB OHCI support.
+
+Signed-off-by: Maxime Bizon <mbizon@freebox.fr>
+---
+ arch/mips/bcm63xx/Kconfig                          |    6 +
+ arch/mips/bcm63xx/Makefile                         |    1 +
+ arch/mips/bcm63xx/dev-usb-ohci.c                   |   50 ++++++
+ drivers/usb/host/ohci-bcm63xx.c                    |  159 ++++++++++++++++++++
+ drivers/usb/host/ohci-hcd.c                        |    5 +
+ drivers/usb/host/ohci.h                            |    7 +-
+ .../asm-mips/mach-bcm63xx/bcm63xx_dev_usb_ohci.h   |    6 +
+ 7 files changed, 233 insertions(+), 1 deletions(-)
+ create mode 100644 arch/mips/bcm63xx/dev-usb-ohci.c
+ create mode 100644 drivers/usb/host/ohci-bcm63xx.c
+ create mode 100644 arch/mips/include/asm/mach-bcm63xx/bcm63xx_dev_usb_ohci.h
+
+--- a/drivers/usb/host/ohci-hcd.c
++++ b/drivers/usb/host/ohci-hcd.c
+@@ -916,6 +916,11 @@ MODULE_LICENSE ("GPL");
+ #define PLATFORM_DRIVER		usb_hcd_pnx4008_driver
+ #endif
+ 
++#ifdef CONFIG_BCM63XX
++#include "ohci-bcm63xx.c"
++#define PLATFORM_DRIVER		ohci_hcd_bcm63xx_driver
++#endif
++
+ 
+ #ifdef CONFIG_USB_OHCI_HCD_PPC_OF
+ #include "ohci-ppc-of.c"

@@ -1,0 +1,20 @@
+--- a/drivers/usb/Kconfig
++++ b/drivers/usb/Kconfig
+@@ -12,6 +12,7 @@ config USB_ARCH_HAS_HCD
+ 	default y if USB_ARCH_HAS_OHCI
+ 	default y if USB_ARCH_HAS_EHCI
+ 	default y if ARM				# SL-811
++	default y if CPU_CAVIUM_OCTEON
+ 	default PCI
+ 
+ # many non-PCI SOC chips embed OHCI
+--- a/drivers/usb/Makefile
++++ b/drivers/usb/Makefile
+@@ -17,6 +17,7 @@ obj-$(CONFIG_USB_SL811_HCD)	+= host/
+ obj-$(CONFIG_USB_U132_HCD)	+= host/
+ obj-$(CONFIG_ETRAX_USB_HOST)	+= host/
+ obj-$(CONFIG_USB_OHCI_AT91)	+= host/
++obj-$(CONFIG_CPU_CAVIUM_OCTEON)	+= host/
+ 
+ obj-$(CONFIG_USB_ACM)		+= class/
+ obj-$(CONFIG_USB_PRINTER)	+= class/

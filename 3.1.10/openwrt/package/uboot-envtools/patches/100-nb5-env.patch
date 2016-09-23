@@ -1,0 +1,27 @@
+--- a/fw_env.h
++++ b/fw_env.h
+@@ -42,10 +42,20 @@
+ #define CONFIG_BAUDRATE		115200
+ #define CONFIG_BOOTDELAY	5	/* autoboot after 5 seconds	*/
+ #define CONFIG_BOOTCOMMAND							\
+-	"bootp; "								\
+-	"setenv bootargs root=/dev/nfs nfsroot=${serverip}:${rootpath} "	\
+-	"ip=${ipaddr}:${serverip}:${gatewayip}:${netmask}:${hostname}::off; "	\
+-	"bootm"
++	"bootloader_flash_update=protect off 0xbfc00000 0xbfc3ffff;erase 0xbfc00000 0xbfc3ffff;cp.b 0x100000 0xbfc00000 0x40000\0"				\
++	"burn_app=erase 0xBDC80000 +$(filesize);cp.b 0x100000 0xBDC80000 $(filesize)\0"				\
++	"ls=fatls ide 0\0"				\
++	"bf=bootoct 0xBDC80000 numcores=$(numcores)\0"				\
++	"nuke_env=protect off BFBE0000 BFBFFFFF; erase BFBE0000 BFBFFFFF\0"				\
++	"autoload=n\0"					\
++	"bootlimit=4\0"					\
++	"bootcmd=unlzma bec80000 5000000;bootoctlinux 5000000 numcores=$(numcores)\0"	\
++	"altbootcmd=unlzma bf880000 5000000;bootoctlinux 5000000\0"	\
++	"ipaddr=192.168.22.22\0"	\
++	"serverip=192.168.22.68\0"	\
++	"ethact=octeth1\0"	\
++	"boot_t=tftpboot 5000000 vmlinux.64;bootoctlinux 5000000 numcores=$(numcores)\0"	\
++	""
+ 
+ # include <stdint.h>
+ 

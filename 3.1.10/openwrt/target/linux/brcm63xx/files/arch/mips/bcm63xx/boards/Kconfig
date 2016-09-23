@@ -1,0 +1,46 @@
+choice
+	prompt "Board support"
+	depends on BCM63XX
+	default BOARD_BCM963XX
+
+config BOARD_BCM963XX
+       bool "Generic Broadcom 963xx boards"
+	select SSB
+       help
+
+config BOARD_LIVEBOX
+	bool "Inventel Livebox(es) boards"
+	select SSB
+	help
+	 Inventel Livebox boards using the RedBoot bootloader.
+
+config BOARD_NEUFBOX4
+	bool "SFR neufbox4 boards"
+	select BCM96358
+	select MIPS_BRCM
+	help
+
+config BOARD_NEUFBOX6
+	bool "SFR neufbox6 boards"
+	select BCM96362
+	select MIPS_BRCM
+	select HAVE_PWM
+	help
+
+endchoice
+
+config MIPS_BRCM
+	bool
+
+config BCM96358
+	bool
+
+config BCM96362
+	bool
+
+config HAVE_PWM
+	bool
+
+config BCM_FAP
+	bool "Bcm FAP"
+	help

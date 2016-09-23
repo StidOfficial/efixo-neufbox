@@ -1,0 +1,36 @@
+--- a/src/mroute-api.c
++++ b/src/mroute-api.c
+@@ -215,7 +215,7 @@ int delMRoute( struct MRouteDesc *Dp )
+     rc = setsockopt( MRouterFD, IPPROTO_IP, MRT_DEL_MFC,
+ 		    (void *)&CtlReq, sizeof( CtlReq ) );
+     if (rc)
+-        my_log( LOG_WARNING, errno, "MRT_DEL_MFC" );
++        my_log( LOG_DEBUG, errno, "MRT_DEL_MFC" );
+ 
+     return rc;
+ }
+--- a/src/rttable.c
++++ b/src/rttable.c
+@@ -371,7 +371,7 @@ int activateRoute(uint32_t group, uint32
+         // If the origin address is set, update the route data.
+         if(originAddr > 0) {
+             if(croute->originAddr > 0 && croute->originAddr!=originAddr) {
+-                my_log(LOG_WARNING, 0, "The origin for route %s changed from %s to %s",
++                my_log(LOG_DEBUG, 0, "The origin for route %s changed from %s to %s",
+                     inetFmt(croute->group, s1),
+                     inetFmt(croute->originAddr, s2),
+                     inetFmt(originAddr, s3));
+--- a/src/igmpproxy.c
++++ b/src/igmpproxy.c
+@@ -80,10 +80,7 @@ int main( int ArgCn, char *ArgVc[] ) {
+             Log2Stderr = true;
+             break;
+         case 'v':
+-            if (LogLevel == LOG_INFO)
+-                LogLevel = LOG_DEBUG;
+-            else
+-                LogLevel = LOG_INFO;
++	    LogLevel = LOG_DEBUG;
+             break;
+         case 'h':
+             fputs(Usage, stderr);

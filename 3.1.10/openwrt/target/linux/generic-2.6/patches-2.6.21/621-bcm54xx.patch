@@ -1,0 +1,24 @@
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -211,6 +211,11 @@ config BCM53XX
+ 	help
+ 	  This add support for Broadcom 53xx switch
+ 
++config BCM54XX
++	tristate "Broadcom 54xx switch"
++	help
++	  This add support for Broadcom 54xx switch
++
+ source "drivers/net/arm/Kconfig"
+ 
+ config MACE
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -203,6 +203,7 @@ obj-$(CONFIG_DM9000) += dm9000.o
+ obj-$(CONFIG_FEC_8XX) += fec_8xx/
+ obj-$(CONFIG_PASEMI_MAC) += pasemi_mac.o
+ obj-$(CONFIG_BCM53XX)	+= bcm53xx.o
++obj-$(CONFIG_BCM54XX)	+= bcm54xx.o
+ 
+ obj-$(CONFIG_MACB) += macb.o
+ 

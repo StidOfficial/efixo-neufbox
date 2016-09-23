@@ -1,0 +1,22 @@
+--- a/src/igmpproxy.c
++++ b/src/igmpproxy.c
+@@ -285,6 +285,8 @@ void igmpProxyRun() {
+ 
+         FD_ZERO( &ReadFDS );
+         FD_SET( MRouterFD, &ReadFDS );
++        FD_SET( getMcGroupSock(), &ReadFDS );
++        MaxFD = (MRouterFD > getMcGroupSock() ) ? MRouterFD : getMcGroupSock();
+ 
+         // wait for input
+         Rt = select( MaxFD +1, &ReadFDS, NULL, NULL, timeout );
+@@ -309,6 +311,10 @@ void igmpProxyRun() {
+ 
+                 acceptIgmp(recvlen);
+             }
++	    else if ( FD_ISSET( getMcGroupSock(), &ReadFDS ) ) {
++		    recvlen = recvfrom(getMcGroupSock(), recv_buf, RECV_BUF_SIZE,
++				    0, NULL, &dummy);
++	    }
+         }
+ 
+         // At this point, we can handle timeouts...

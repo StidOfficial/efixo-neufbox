@@ -1,0 +1,14 @@
+--- a/source/nmbd/nmbd_elections.c
++++ b/source/nmbd/nmbd_elections.c
+@@ -133,10 +133,7 @@ void check_master_browser_exists(time_t
+   struct subnet_record *subrec;
+   char *workgroup_name = global_myworkgroup;
+ 
+-  if (!lastrun)
+-    lastrun = t;
+-
+-  if (t < (lastrun + (CHECK_TIME_MST_BROWSE * 60)))
++  if ( (lastrun != 0) && t < (lastrun + (CHECK_TIME_MST_BROWSE * 60)))
+     return;
+ 
+   lastrun = t;

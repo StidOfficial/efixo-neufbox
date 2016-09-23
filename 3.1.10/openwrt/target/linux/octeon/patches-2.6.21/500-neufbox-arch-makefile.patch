@@ -1,0 +1,14 @@
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -628,6 +628,11 @@ endif
+ # temporary until string.h is fixed
+ cflags-y += -ffreestanding
+ 
++#
++# Neufbox board
++#
++cflags-$(CONFIG_BOARD_NEUFBOX5)	+= -DVOIP_DSCP=0x2D -DTV_DSCP=0x24
++
+ cflags-y			+= -Iinclude/asm-mips/mach-generic
+ drivers-$(CONFIG_PCI)		+= arch/mips/pci/
+ 

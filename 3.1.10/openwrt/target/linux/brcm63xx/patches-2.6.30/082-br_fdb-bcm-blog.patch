@@ -1,0 +1,36 @@
+--- a/net/bridge/br_fdb.c
++++ b/net/bridge/br_fdb.c
+@@ -24,6 +24,10 @@
+ #include <asm/unaligned.h>
+ #include "br_private.h"
+ 
++#if defined(CONFIG_BCM63XX)
++#include <linux/blog.h>
++#endif
++
+ static struct kmem_cache *br_fdb_cache __read_mostly;
+ static int fdb_insert(struct net_bridge *br, struct net_bridge_port *source,
+ 		      const unsigned char *addr);
+@@ -74,6 +78,9 @@ static inline int br_mac_hash(const unsi
+ static inline void fdb_delete(struct net_bridge_fdb_entry *f)
+ {
+ 	hlist_del_rcu(&f->hlist);
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	blog_notify(f, NULL, BLOG_EVENT_STOP);
++#endif
+ 	br_fdb_put(f);
+ }
+ 
+@@ -415,3 +422,12 @@ void br_fdb_update(struct net_bridge *br
+ 		spin_unlock(&br->hash_lock);
+ 	}
+ }
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++extern void br_fdb_refresh( struct net_bridge_fdb_entry *fdb );
++void br_fdb_refresh( struct net_bridge_fdb_entry *fdb )
++{
++	fdb->ageing_timer = jiffies;
++	return;
++}
++#endif
++

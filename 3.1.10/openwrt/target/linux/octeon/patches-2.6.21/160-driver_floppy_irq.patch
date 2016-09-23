@@ -1,0 +1,14 @@
+--- a/drivers/block/floppy.c
++++ b/drivers/block/floppy.c
+@@ -194,7 +194,11 @@ static int slow_floppy;
+ #include <asm/io.h>
+ #include <asm/uaccess.h>
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++static int FLOPPY_IRQ = 86;
++#else
+ static int FLOPPY_IRQ = 6;
++#endif
+ static int FLOPPY_DMA = 2;
+ static int can_use_virtual_dma = 2;
+ /* =======

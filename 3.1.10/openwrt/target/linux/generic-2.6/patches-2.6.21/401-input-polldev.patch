@@ -1,0 +1,32 @@
+--- a/drivers/input/Kconfig
++++ b/drivers/input/Kconfig
+@@ -38,6 +38,19 @@ config INPUT_FF_MEMLESS
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ff-memless.
+ 
++config INPUT_POLLDEV
++        tristate "Polled input device skeleton"
++        help
++          Say Y here if you are using a driver for an input
++          device that periodically polls hardware state. This
++          option is only useful for out-of-tree drivers since
++          in-tree drivers select it automatically.
++
++          If unsure, say N.
++
++          To compile this driver as a module, choose M here: the
++          module will be called input-polldev.
++
+ comment "Userland interfaces"
+ 
+ config INPUT_MOUSEDEV
+--- a/drivers/input/Makefile
++++ b/drivers/input/Makefile
+@@ -8,6 +8,7 @@ obj-$(CONFIG_INPUT)		+= input-core.o
+ input-core-objs := input.o ff-core.o
+ 
+ obj-$(CONFIG_INPUT_FF_MEMLESS)	+= ff-memless.o
++obj-$(CONFIG_INPUT_POLLDEV)     += input-polldev.o
+ 
+ obj-$(CONFIG_INPUT_MOUSEDEV)	+= mousedev.o
+ obj-$(CONFIG_INPUT_JOYDEV)	+= joydev.o

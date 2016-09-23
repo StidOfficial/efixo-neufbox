@@ -1,0 +1,26 @@
+--- a/net/bridge/br_forward.c
++++ b/net/bridge/br_forward.c
+@@ -28,6 +28,13 @@ static int deliver_clone(const struct ne
+ static inline int should_deliver(const struct net_bridge_port *p,
+ 				 const struct sk_buff *skb)
+ {
++	/*
++	 * Do not forward any packets received from one WAN interface 
++	 * to other WAN interfaces in multiple PVC case
++	 */
++	if ((skb->dev->priv_flags & p->dev->priv_flags) & (IFF_WANDEV|IFF_WLANDEV))
++		return 0;
++
+ 	return (skb->dev != p->dev && p->state == BR_STATE_FORWARDING);
+ }
+ 
+--- a/drivers/net/macvlan.c
++++ b/drivers/net/macvlan.c
+@@ -365,6 +365,7 @@ static int macvlan_init(struct net_devic
+ 				  (lowerdev->state & MACVLAN_STATE_MASK);
+ 	dev->features 		= lowerdev->features & MACVLAN_FEATURES;
+ 	dev->iflink		= lowerdev->ifindex;
++	dev->priv_flags |= IFF_WANDEV;
+ 
+ 	macvlan_set_lockdep_class(dev);
+ 

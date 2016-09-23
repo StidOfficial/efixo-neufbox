@@ -1,0 +1,23 @@
+--- a/drivers/pcmcia/Kconfig
++++ b/drivers/pcmcia/Kconfig
+@@ -197,6 +197,10 @@ config PCMCIA_AU1X00
+ 	tristate "Au1x00 pcmcia support"
+ 	depends on SOC_AU1X00 && PCMCIA
+ 
++config PCMCIA_BCM63XX
++	tristate "bcm63xx pcmcia support"
++	depends on BCM63XX && PCMCIA
++
+ config PCMCIA_SA1100
+ 	tristate "SA1100 support"
+ 	depends on ARM && ARCH_SA1100 && PCMCIA
+--- a/drivers/pcmcia/Makefile
++++ b/drivers/pcmcia/Makefile
+@@ -33,6 +33,7 @@ obj-$(CONFIG_PCMCIA_PXA2XX)
+ obj-$(CONFIG_M32R_PCC)				+= m32r_pcc.o
+ obj-$(CONFIG_M32R_CFC)				+= m32r_cfc.o
+ obj-$(CONFIG_PCMCIA_AU1X00)			+= au1x00_ss.o
++obj-$(CONFIG_PCMCIA_BCM63XX)			+= bcm63xx_pcmcia.o
+ obj-$(CONFIG_PCMCIA_VRC4171)			+= vrc4171_card.o
+ obj-$(CONFIG_PCMCIA_VRC4173)			+= vrc4173_cardu.o
+ obj-$(CONFIG_OMAP_CF)				+= omap_cf.o

@@ -1,0 +1,17 @@
+--- a/config.h.openwrt
++++ b/config.h.openwrt
+@@ -8,10 +8,11 @@
+ 
+ #define UPNP_VERSION	"20070228"
+ #define USE_NETFILTER 1
+-#define OS_NAME	"OpenWRT"
++#define ENABLE_EVENTS 1
++#define OS_NAME	"neufbox"
+ /* OS/version */
+-#define OS_VERSION	"OpenWRT/kamikaze"
+-#define OS_URL	"http://openwrt.org/"
++#define OS_VERSION	"neufbox"
++#define OS_URL	"http://efixo.com"
+ 
+ #define LOG_MINIUPNPD	LOG_DAEMON
+ 

@@ -1,0 +1,19 @@
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -141,5 +141,9 @@ config LEDS_TRIGGER_HEARTBEAT
+ 	  load average.
+ 	  If unsure, say Y.
+ 
++config LEDS_TRIGGER_MORSE
++	tristate "LED Morse Trigger"
++	depends on LEDS_TRIGGERS
++
+ endmenu
+ 
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -23,3 +23,4 @@ obj-$(CONFIG_LEDS_PWM)			+= leds-pwm.o
+ obj-$(CONFIG_LEDS_TRIGGER_TIMER)	+= ledtrig-timer.o
+ obj-$(CONFIG_LEDS_TRIGGER_IDE_DISK)	+= ledtrig-ide-disk.o
+ obj-$(CONFIG_LEDS_TRIGGER_HEARTBEAT)	+= ledtrig-heartbeat.o
++obj-$(CONFIG_LEDS_TRIGGER_MORSE)	+= ledtrig-morse.o

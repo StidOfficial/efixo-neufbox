@@ -1,0 +1,21 @@
+--- a/net/ipv4/ipmr.c
++++ b/net/ipv4/ipmr.c
+@@ -635,7 +635,7 @@ ipmr_cache_unresolved(vifi_t vifi, struc
+ 		 *	Create a new entry if allowable
+ 		 */
+ 
+-		if (atomic_read(&cache_resolve_queue_len)>=10 ||
++		if (atomic_read(&cache_resolve_queue_len)>=20 ||
+ 		    (c=ipmr_cache_alloc_unres())==NULL) {
+ 			spin_unlock_bh(&mfc_unres_lock);
+ 
+@@ -668,7 +668,8 @@ ipmr_cache_unresolved(vifi_t vifi, struc
+ 		c->next = mfc_unres_queue;
+ 		mfc_unres_queue = c;
+ 
+-		mod_timer(&ipmr_expire_timer, c->mfc_un.unres.expires);
++		if (atomic_read(&cache_resolve_queue_len) == 1)
++			mod_timer(&ipmr_expire_timer, c->mfc_un.unres.expires);
+ 	}
+ 
+ 	/*

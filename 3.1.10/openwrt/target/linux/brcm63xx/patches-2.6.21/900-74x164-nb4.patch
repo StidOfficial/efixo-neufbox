@@ -1,0 +1,60 @@
+--- a/drivers/gpio/74x164.c
++++ b/drivers/gpio/74x164.c
+@@ -18,6 +18,11 @@
+ #include <linux/platform_device.h>
+ #include <linux/74x164.h>
+ 
++#ifdef CONFIG_BOARD_NEUFBOX4
++#include <bcm63xx_regs.h>
++#include <bcm63xx_io.h>
++#endif
++
+ #define GEN_74X164_MAX_GPIOS   32
+ 
+ struct gen_74x164_chip {
+@@ -101,11 +106,22 @@ void gen_74x164_sync(void)
+        if (chip->dirty) {
+ 	       chip->dirty = 0;
+                mask = chip->mask;
++#ifdef CONFIG_BOARD_NEUFBOX4
++	       mask |= 0xE0;           /* Fixup: neufbox4 logo off, brightness low */ 
++	       for (i = 0; i < 10000; ++i) { 
++		       if (!(bcm_gpio_readl(GPIO_SERIAL_CTL_REG) & 
++					       GPIO_SERIAL_6358_BUSY)) { 
++			       bcm_gpio_writel(mask, GPIO_SERIAL_DATA_REG); 
++			       break;
++		       } 
++	       }
++#else
+                for (i = pdata->ngpio - 1; i >= 0; --i) {
+                        gpio_set_value(pdata->gpio_pin_data, test_bit(i, &mask));
+                        gpio_set_value(pdata->gpio_pin_clk, 1);
+                        gpio_set_value(pdata->gpio_pin_clk, 0);
+                }
++#endif
+        }
+        spin_unlock_irqrestore(&chip->lock, flags);
+ }
+@@ -150,6 +166,14 @@ static int __devinit gen_74x164_probe(st
+                goto err_free_clk;
+        }
+ 
++#ifdef CONFIG_BOARD_NEUFBOX4
++       {
++       u32 val = bcm_gpio_readl(GPIO_MODE_REG);
++
++       val |= GPIO_MODE_6358_SERIAL_LED;
++       bcm_gpio_writel(val, GPIO_MODE_REG);
++       }
++#else
+        err = gpio_direction_output(pdata->gpio_pin_clk, 0);
+        if (err) {
+                dev_err(&pdev->dev,
+@@ -165,6 +189,7 @@ static int __devinit gen_74x164_probe(st
+                        pdata->gpio_pin_data, err);
+                goto err_free_data;
+        }
++#endif
+ 
+        chip->parent = &pdev->dev;
+        spin_lock_init(&chip->lock);

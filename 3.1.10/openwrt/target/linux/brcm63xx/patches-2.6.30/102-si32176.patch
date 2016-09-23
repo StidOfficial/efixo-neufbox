@@ -1,0 +1,20 @@
+--- a/drivers/telephony/Kconfig
++++ b/drivers/telephony/Kconfig
+@@ -44,4 +44,10 @@ config PHONE_IXJ_PCMCIA
+ 	  cards manufactured by Quicknet Technologies, Inc.  This changes the
+ 	  card initialization code to work with the card manager daemon.
+ 
++config SI32176
++       tristate "Silabs SLIC 32176 support"
++       depends on TDM && SPI
++       help
++         Say M here id you have a board with Si32176 Chip.
++
+ endif # PHONE
+--- a/drivers/telephony/Makefile
++++ b/drivers/telephony/Makefile
+@@ -5,3 +5,4 @@
+ obj-$(CONFIG_PHONE) += phonedev.o
+ obj-$(CONFIG_PHONE_IXJ) += ixj.o
+ obj-$(CONFIG_PHONE_IXJ_PCMCIA) += ixj_pcmcia.o
++obj-$(CONFIG_SI32176) += si32176.o

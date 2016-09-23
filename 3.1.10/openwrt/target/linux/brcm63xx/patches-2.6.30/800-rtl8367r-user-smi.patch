@@ -1,0 +1,73 @@
+--- a/drivers/net/phy/rtl8367_smi.c
++++ b/drivers/net/phy/rtl8367_smi.c
+@@ -15,6 +15,9 @@
+ #include <linux/delay.h>
+ #include <linux/gpio.h>
+ #include <linux/spinlock.h>
++#ifdef CONFIG_BOARD_NEUFBOX6
++#include <linux/mii.h>
++#endif
+ 
+ #include "rtl8367_smi.h"
+ 
+@@ -269,6 +272,36 @@ int rtl8367_smi_write_reg(struct rtl8367
+ }
+ EXPORT_SYMBOL_GPL(rtl8367_smi_write_reg);
+ 
++#ifdef CONFIG_BOARD_NEUFBOX6
++enum {
++	SIOCGRTLPHYREGS = SIOCDEVPRIVATE + 14,
++	SIOCSRTLPHYREGS
++};
++
++static struct rtl8367_smi *nb6_smi = NULL;
++
++int rtl8367r_ioctl(struct ifreq *rq, int cmd)
++{
++	struct mii_ioctl_data *mii_data = if_mii(rq);
++	u32 v;
++
++	if (!nb6_smi)
++		return -EOPNOTSUPP;
++
++	if (cmd == SIOCGRTLPHYREGS) {
++		rtl8367_smi_read_reg(nb6_smi, mii_data->reg_num, &v);
++		mii_data->val_out = v;
++	} else if (cmd == SIOCSRTLPHYREGS) {
++		rtl8367_smi_write_reg(nb6_smi, mii_data->reg_num, mii_data->val_in);
++	} else {
++		return -EOPNOTSUPP;
++	}
++	return 0;
++}
++
++EXPORT_SYMBOL(rtl8367r_ioctl);
++#endif
++
+ int rtl8367_smi_init(struct rtl8367_smi *smi)
+ {
+ 	int err;
+@@ -292,9 +325,12 @@ int rtl8367_smi_init(struct rtl8367_smi
+ 
+ 	spin_lock_init(&smi->lock);
+ 
++#ifdef CONFIG_BOARD_NEUFBOX6
++	nb6_smi = smi;
++#endif
++
+ 	dev_info(smi->parent, "using GPIO pins %u (SDA) and %u (SCK)\n",
+ 		 smi->gpio_sda, smi->gpio_sck);
+-
+ 	return 0;
+ 
+  err_free_sda:
+@@ -306,6 +342,9 @@ EXPORT_SYMBOL_GPL(rtl8367_smi_init);
+ 
+ void rtl8367_smi_cleanup(struct rtl8367_smi *smi)
+ {
++#ifdef CONFIG_BOARD_NEUFBOX6
++	nb6_smi = NULL;
++#endif
+ 	gpio_free(smi->gpio_sck);
+ 	gpio_free(smi->gpio_sda);
+ }

@@ -1,0 +1,22 @@
+--- a/arch/mips/mm/fault.c
++++ b/arch/mips/mm/fault.c
+@@ -164,7 +164,7 @@ no_context:
+ 	       "virtual address %0*lx, epc == %0*lx, ra == %0*lx\n",
+ 	       raw_smp_processor_id(), field, address, field, regs->cp0_epc,
+ 	       field,  regs->regs[31]);
+-	die("Oops", regs);
++	die("oo\aps", regs);
+ 
+ out_of_memory:
+ 	/*
+--- a/kernel/panic.c
++++ b/kernel/panic.c
+@@ -70,7 +70,7 @@ NORET_TYPE void panic(const char * fmt,
+ 	va_start(args, fmt);
+ 	vsnprintf(buf, sizeof(buf), fmt, args);
+ 	va_end(args);
+-	printk(KERN_EMERG "Kernel panic - not syncing: %s\n",buf);
++	printk(KERN_EMERG "Kernel pa\anic - not syncing: %s\n",buf);
+ #ifdef CONFIG_DEBUG_BUGVERBOSE
+ 	dump_stack();
+ #endif

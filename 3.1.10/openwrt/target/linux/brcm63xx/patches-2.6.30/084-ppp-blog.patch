@@ -1,0 +1,35 @@
+--- a/drivers/net/ppp_generic.c
++++ b/drivers/net/ppp_generic.c
+@@ -52,6 +52,10 @@
+ #include <linux/nsproxy.h>
+ #include <net/net_namespace.h>
+ #include <net/netns/generic.h>
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++#include <linux/blog.h>
++#endif
++
+ 
+ #define PPP_VERSION	"2.4.2"
+ 
+@@ -1174,6 +1178,10 @@ ppp_send_frame(struct ppp *ppp, struct s
+ #endif /* CONFIG_PPP_FILTER */
+ 	}
+ 
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++	blog_dev( skb, ppp->dev, DIR_TX, skb->len - 2 );
++#endif
++
+ 	++ppp->dev->stats.tx_packets;
+ 	ppp->dev->stats.tx_bytes += skb->len - 2;
+ 
+@@ -1734,6 +1742,10 @@ ppp_receive_nonmp_frame(struct ppp *ppp,
+ 		break;
+ 	}
+ 
++#if defined(CONFIG_MIPS_BRCM) && defined(CONFIG_BLOG)
++	blog_dev( skb, ppp->dev, DIR_RX, skb->len - 2 );
++#endif
++
+ 	++ppp->dev->stats.rx_packets;
+ 	ppp->dev->stats.rx_bytes += skb->len - 2;
+ 

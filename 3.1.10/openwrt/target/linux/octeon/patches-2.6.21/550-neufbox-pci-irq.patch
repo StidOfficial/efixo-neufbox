@@ -1,0 +1,11 @@
+--- a/arch/mips/cavium-octeon/hal.c
++++ b/arch/mips/cavium-octeon/hal.c
+@@ -210,6 +210,8 @@ const char *octeon_get_pci_interrupts(vo
+ 		return "AAABAAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+         case CVMX_BOARD_TYPE_BBGW_REF:
+             return "AABCD";
++        case CVMX_BOARD_TYPE_CUST_NB5:
++	    return "ABDABAAAAAAAAAAAAAAAAAAAAAAAAAAA";
+ 	default:
+ 		return "";
+ 	}

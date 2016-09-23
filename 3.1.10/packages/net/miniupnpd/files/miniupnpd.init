@@ -1,0 +1,45 @@
+#!/bin/sh /etc/rc.common
+
+logger "[upnp] $$ $action"
+
+UPNP_PORT=49152
+PIDFILE=/var/run/miniupnpd.pid
+
+boot() {
+	iptables -t nat -N MINIUPNPD
+}
+
+start() {
+	lan_ipaddr=$(nvram get lan_ipaddr)
+	net_data_ifname=$(status get net_data_ifname)
+	upnpd_uuid=$(nvram get upnpd_uuid)
+	[ -z "${upnpd_uuid}" ]  && {
+		upnpd_uuid=$(uuidgen)
+		nvram set upnpd_uuid ${upnpd_uuid}
+		nvram commit user
+	}
+
+	if [ "$(nvram get upnpd_active)" == "on" ]
+	then
+		iptables -A LAN_FILTER -p tcp -m tcp --dport ${UPNP_PORT} -j ACCEPT
+	else
+		iptables -A LAN_FILTER -p tcp -m tcp --dport ${UPNP_PORT} -j STB_FILTER
+	fi
+
+	miniupnpd -i ${net_data_ifname} -u ${upnpd_uuid} -a ${lan_ipaddr} -p ${UPNP_PORT} -U -S
+}
+
+stop() {
+	iptables -D LAN_FILTER -p tcp -m tcp --dport ${UPNP_PORT} -j ACCEPT 2>/dev/null
+	iptables -D LAN_FILTER -p tcp -m tcp --dport ${UPNP_PORT} -j STB_FILTER 2>/dev/null
+
+	pid=$(cat ${PIDFILE})
+	[ -n "${pid}" ]	&& {
+		kill ${pid}
+		sleep 2
+		kill -KILL ${pid}
+	}
+	rm -f /var/run/miniupnpd.pid
+
+	iptables -t nat -F MINIUPNPD
+}

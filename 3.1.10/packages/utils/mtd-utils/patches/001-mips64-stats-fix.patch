@@ -1,0 +1,40 @@
+--- a/flashcp.c
++++ b/flashcp.c
+@@ -57,8 +57,8 @@ typedef int bool;
+ #define DEBUG(fmt,args...)
+ #endif
+ 
+-#define KB(x) ((x) / 1024)
+-#define PERCENTAGE(x,total) (((x) * 100) / (total))
++#define KB(x) (unsigned long)((x) / 1024)
++#define PERCENTAGE(x,total) (unsigned long)(((x) * 100) / (total))
+ 
+ /* size of read/write buffer */
+ #define BUFSIZE (10 * 1024)
+@@ -266,7 +266,7 @@ int main (int argc,char *argv[])
+ 		log_printf (LOG_NORMAL,"Erasing blocks: 0/%d (0%%)",blocks);
+ 		for (i = 1; i <= blocks; i++)
+ 		{
+-			log_printf (LOG_NORMAL,"\rErasing blocks: %d/%d (%d%%)",i,blocks,PERCENTAGE (i,blocks));
++			log_printf (LOG_NORMAL,"\rErasing blocks: %d/%d (%lu%%)",i,blocks,PERCENTAGE (i,blocks));
+ 			if (ioctl (dev_fd,MEMERASE,&erase) < 0)
+ 			{
+ 				log_printf (LOG_NORMAL,"\n");
+@@ -304,7 +304,7 @@ int main (int argc,char *argv[])
+ 	{
+ 		if (size < BUFSIZE) i = size;
+ 		if (flags & FLAG_VERBOSE)
+-			log_printf (LOG_NORMAL,"\rWriting data: %dk/%luk (%lu%%)",
++			log_printf (LOG_NORMAL,"\rWriting data: %luk/%luk (%lu%%)",
+ 					KB (written + i),
+ 					KB (filestat.st_size),
+ 					PERCENTAGE (written + i,filestat.st_size));
+@@ -355,7 +355,7 @@ int main (int argc,char *argv[])
+ 		if (size < BUFSIZE) i = size;
+ 		if (flags & FLAG_VERBOSE)
+ 			log_printf (LOG_NORMAL,
+-					"\rVerifying data: %dk/%luk (%lu%%)",
++					"\rVerifying data: %luk/%luk (%lu%%)",
+ 					KB (written + i),
+ 					KB (filestat.st_size),
+ 					PERCENTAGE (written + i,filestat.st_size));

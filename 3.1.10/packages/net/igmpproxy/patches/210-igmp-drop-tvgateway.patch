@@ -1,0 +1,38 @@
+--- a/src/igmp.c
++++ b/src/igmp.c
+@@ -36,6 +36,9 @@
+ */
+ 
+ #include "igmpproxy.h"
++#include <nbd/config.h>
++#include <nbd/core.h>
++#include <nbd/status.h>
+  
+ // Globals                  
+ uint32_t     allhosts_group;          /* All hosts addr in net order */
+@@ -143,7 +146,24 @@ void acceptIgmp(int recvlen) {
+                     inetFmt(src, s1), inetFmt(dst, s2));
+                 return;
+             }
+-            
++           
++	    if (has_net_infra_adsl()) {
++		    char net_tv_infra[32];
++		    char net_tv_gateway[32];
++
++		    nbd_open();
++		    nbd_status_get("net_tv_infra", net_tv_infra, sizeof(net_tv_infra));
++		    nbd_status_get("net_tv_gateway", net_tv_gateway, sizeof(net_tv_gateway));
++		    nbd_close();
++
++		    if ((!memcmp(net_tv_infra, "adsl", 4))
++				    && (!strcmp(inetFmt(src, s1), net_tv_gateway))) {
++			    my_log(LOG_DEBUG, 0, "The source address %s for group %s, is TV gateway. Ignoring.",
++					    inetFmt(src, s1), inetFmt(dst, s2));
++			    return;
++		    }
++	    }
++
+             // Activate the route.
+             my_log(LOG_DEBUG, 0, "Route activate request from %s to %s",
+ 		    inetFmt(src,s1), inetFmt(dst,s2));

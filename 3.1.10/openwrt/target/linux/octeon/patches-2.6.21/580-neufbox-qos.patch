@@ -1,0 +1,10 @@
+--- a/drivers/net/cavium-ethernet/ethernet-tx.c
++++ b/drivers/net/cavium-ethernet/ethernet-tx.c
+@@ -65,6 +65,7 @@
+ #ifdef CONFIG_LEDS_NEUFBOX
+ #include <neufbox/leds.h>
+ #endif /* CONFIG_LEDS_NEUFBOX */
++#include "neufbox-qos.h"
+ 
+ /* You can define GET_SKBUFF_QOS() to override how the skbuff output function
+     determines which output queue is used. The default implementation

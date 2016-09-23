@@ -1,0 +1,120 @@
+From 2a7fa2dbbf68650644f807a50cc2d84ca30835c1 Mon Sep 17 00:00:00 2001
+From: Maxime Bizon <mbizon@freebox.fr>
+Date: Sun, 21 Sep 2008 04:47:13 +0200
+Subject: [PATCH] [MIPS] BCM63XX: Add PCI support.
+
+Signed-off-by: Maxime Bizon <mbizon@freebox.fr>
+---
+ arch/mips/bcm63xx/Kconfig                       |    2 +
+ arch/mips/bcm63xx/setup.c                       |    2 +
+ arch/mips/pci/Makefile                          |    2 +
+ arch/mips/pci/fixup-bcm63xx.c                   |   21 +++
+ arch/mips/pci/ops-bcm63xx.c                     |  179 +++++++++++++++++++++++
+ arch/mips/pci/pci-bcm63xx.c                     |  178 ++++++++++++++++++++++
+ arch/mips/pci/pci-bcm63xx.h                     |   27 ++++
+ arch/mips/include/asm/mach-bcm63xx/bcm63xx_dev_pci.h |    6 +
+ 8 files changed, 417 insertions(+), 0 deletions(-)
+ create mode 100644 arch/mips/pci/fixup-bcm63xx.c
+ create mode 100644 arch/mips/pci/ops-bcm63xx.c
+ create mode 100644 arch/mips/pci/pci-bcm63xx.c
+ create mode 100644 arch/mips/pci/pci-bcm63xx.h
+ create mode 100644 arch/mips/include/asm/mach-bcm63xx/bcm63xx_dev_pci.h
+
+--- a/arch/mips/pci/Makefile
++++ b/arch/mips/pci/Makefile
+@@ -16,6 +16,8 @@ obj-$(CONFIG_PCI_VR41XX)	+= ops-vr41xx.o
+ obj-$(CONFIG_NEC_MARKEINS)	+= ops-emma2rh.o pci-emma2rh.o fixup-emma2rh.o
+ obj-$(CONFIG_PCI_TX4927)	+= ops-tx4927.o
+ obj-$(CONFIG_BCM47XX)		+= pci-bcm47xx.o
++obj-$(CONFIG_BCM63XX)		+= pci-bcm63xx.o fixup-bcm63xx.o \
++					ops-bcm63xx.o
+ 
+ #
+ # These are still pretty much in the old state, watch, go blind.
+--- a/drivers/pci/quirks.c
++++ b/drivers/pci/quirks.c
+@@ -2547,6 +2547,84 @@ void pci_fixup_device(enum pci_fixup_pas
+ 	pci_do_fixups(dev, start, end);
+ }
+ #else
++#if defined(CONFIG_BCM63XX)
++static void pci_do_fixups(struct pci_dev *dev, struct pci_fixup *f,
++                          struct pci_fixup *end)
++{
++        while (f < end) {
++                if ((f->vendor == dev->vendor || f->vendor == (u16) PCI_ANY_ID) &&
++                    (f->device == dev->device || f->device == (u16) PCI_ANY_ID)) {
++                        dev_dbg(&dev->dev, "calling %pF\n", f->hook);
++                        f->hook(dev);
++                }
++                f++;
++        }
++}
++
++extern struct pci_fixup __start_pci_fixups_early[];
++extern struct pci_fixup __end_pci_fixups_early[];
++extern struct pci_fixup __start_pci_fixups_header[];
++extern struct pci_fixup __end_pci_fixups_header[];
++extern struct pci_fixup __start_pci_fixups_final[];
++extern struct pci_fixup __end_pci_fixups_final[];
++extern struct pci_fixup __start_pci_fixups_enable[];
++extern struct pci_fixup __end_pci_fixups_enable[];
++extern struct pci_fixup __start_pci_fixups_resume[];
++extern struct pci_fixup __end_pci_fixups_resume[];
++extern struct pci_fixup __start_pci_fixups_resume_early[];
++extern struct pci_fixup __end_pci_fixups_resume_early[];
++extern struct pci_fixup __start_pci_fixups_suspend[];
++extern struct pci_fixup __end_pci_fixups_suspend[];
++
++void pci_fixup_device(enum pci_fixup_pass pass, struct pci_dev *dev)
++{
++        struct pci_fixup *start, *end;
++
++        switch(pass) {
++        case pci_fixup_early:
++                start = __start_pci_fixups_early;
++                end = __end_pci_fixups_early;
++                break;
++
++        case pci_fixup_header:
++                start = __start_pci_fixups_header;
++                end = __end_pci_fixups_header;
++                break;
++
++        case pci_fixup_final:
++                start = __start_pci_fixups_final;
++                end = __end_pci_fixups_final;
++                break;
++
++        case pci_fixup_enable:
++                start = __start_pci_fixups_enable;
++                end = __end_pci_fixups_enable;
++                break;
++
++        case pci_fixup_resume:
++                start = __start_pci_fixups_resume;
++                end = __end_pci_fixups_resume;
++                break;
++
++        case pci_fixup_resume_early:
++                start = __start_pci_fixups_resume_early;
++                end = __end_pci_fixups_resume_early;
++                break;
++
++        case pci_fixup_suspend:
++                start = __start_pci_fixups_suspend;
++                end = __end_pci_fixups_suspend;
++                break;
++
++        default:
++                /* stupid compiler warning, you would think with an enum... */
++                return;
++        }
++        pci_do_fixups(dev, start, end);
++}
++
++#else
+ void pci_fixup_device(enum pci_fixup_pass pass, struct pci_dev *dev) {}
+ #endif
++#endif
+ EXPORT_SYMBOL(pci_fixup_device);

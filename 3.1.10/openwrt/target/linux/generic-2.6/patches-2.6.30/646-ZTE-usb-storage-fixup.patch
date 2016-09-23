@@ -1,0 +1,100 @@
+--- a/drivers/usb/storage/initializers.c
++++ b/drivers/usb/storage/initializers.c
+@@ -93,12 +93,56 @@ int usb_stor_ucr61s2b_init(struct us_dat
+ /* This places the HUAWEI E220 devices in multi-port mode */
+ int usb_stor_huawei_e220_init(struct us_data *us)
+ {
+-	int result;
++	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap*) us->iobuf;
++	int result, partial;
++
++	bcb->Signature = cpu_to_le32(US_BULK_CB_SIGN);
++	bcb->Tag = 0;
++	bcb->DataTransferLength = cpu_to_le32(0);
++	bcb->Flags = 0x80;
++	bcb->Lun = 0;
++	bcb->Length = 6;
++	memset(bcb->CDB, 0, sizeof(bcb->CDB));
++	bcb->CDB[0] = 0x11;
++	bcb->CDB[1] = 0x06;
++	bcb->CDB[2] = 0x30;
++	result = usb_stor_bulk_transfer_buf(us, us->send_bulk_pipe, bcb,
++					    US_BULK_CB_WRAP_LEN, &partial);
++	US_DEBUGP("usb_stor_bulk_transfer_buf result is %d\n", result);
++
++	if (result)
++		   return result;
+ 
++	us->iobuf[0] = 0x0;
+ 	result = usb_stor_control_msg(us, us->send_ctrl_pipe,
+ 				      USB_REQ_SET_FEATURE,
+ 				      USB_TYPE_STANDARD | USB_RECIP_DEVICE,
+-				      0x01, 0x0, NULL, 0x0, 1000);
+-	US_DEBUGP("usb_control_msg performing result is %d\n", result);
+-	return (result ? 0 : -1);
++				      0x01, 0x0, us->iobuf, 0x0, 1000);
++	US_DEBUGP("usb_control_msg_performing result is %d\n", result);
++
++	return (result >= 0 ? 0 : -1);
++}
++
++int usb_stor_zte_init(struct us_data *us)
++{
++	int result;
++
++	struct bulk_cb_wrap *bcb = (struct bulk_cb_wrap*) us->iobuf;
++	int partial;
++
++	bcb->Signature = cpu_to_le32(US_BULK_CB_SIGN);
++	bcb->Tag = 0;
++	bcb->DataTransferLength = cpu_to_le32(0);
++	bcb->Flags = 0x00;
++	bcb->Lun = 0;
++	bcb->Length = 6;
++	memset(bcb->CDB, 0, sizeof(bcb->CDB));
++	bcb->CDB[0] = 0x1b;    // START_STOP
++	bcb->CDB[4] = 0x02;    // EJECT
++	result = usb_stor_bulk_transfer_buf(us, us->send_bulk_pipe, bcb,
++			US_BULK_CB_WRAP_LEN, &partial);
++	US_DEBUGP("usb_stor_bulk_transfer_buf result is %d\n", result);
++
++	/* always return error to avoid lock with scsi layer */
++	return -1;
+ }
+--- a/drivers/usb/storage/initializers.h
++++ b/drivers/usb/storage/initializers.h
+@@ -48,3 +48,6 @@ int usb_stor_ucr61s2b_init(struct us_dat
+ 
+ /* This places the HUAWEI E220 devices in multi-port mode */
+ int usb_stor_huawei_e220_init(struct us_data *us);
++
++/* This function initializes ZTE 3G modems (autorun - cdrom) */
++int usb_stor_zte_init(struct us_data *us);
+--- a/drivers/usb/storage/unusual_devs.h
++++ b/drivers/usb/storage/unusual_devs.h
+@@ -1749,6 +1749,25 @@ UNUSUAL_DEV(  0x12d1, 0x143F, 0x0000, 0x
+ 		US_SC_DEVICE, US_PR_DEVICE, usb_stor_huawei_e220_init,
+ 		0),
+ 
++/* ZTE */
++UNUSUAL_DEV( 0x19d2, 0x0053, 0x0000, 0x0000,
++		"ZTE",
++		"ZTE MOBILE Mass Storage",
++		US_SC_DEVICE, US_PR_DEVICE, usb_stor_zte_init,
++		0 ),
++
++UNUSUAL_DEV( 0x19d2, 0x2000, 0x0000, 0x0000,
++		"Onda ET502HS",
++		"USB MMC Storage",
++		US_SC_DEVICE, US_PR_DEVICE, usb_stor_zte_init,
++		0),
++
++UNUSUAL_DEV( 0x19d2, 0x2003, 0x0000, 0x0000,
++		"ZTE",
++		"ZTE MOBILE Mass Storage",
++		US_SC_DEVICE, US_PR_DEVICE, usb_stor_zte_init,
++		0 ),
++
+ /* Reported by Vilius Bilinkevicius <vilisas AT xxx DOT lt) */
+ UNUSUAL_DEV(  0x132b, 0x000b, 0x0001, 0x0001,
+ 		"Minolta",

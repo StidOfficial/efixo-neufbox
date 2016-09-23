@@ -1,0 +1,15 @@
+--- a/Makefile
++++ b/Makefile
+@@ -1,9 +1,9 @@
+ ##############################
+ # Makefile for ip6calc
+ 
+-CC=gcc
+-CFLAGS=-Wall -g
+-LDFLAGS=
++#CC=gcc
++#CFLAGS=-Wall
++#LDFLAGS=
+ 
+ ip6calc: ip6calc.c
+ 	$(CC) $(CFLAGS) $(LDFLAGS) -o $@ $^

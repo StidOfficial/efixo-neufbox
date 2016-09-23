@@ -1,0 +1,10 @@
+--- a/arch/mips/cavium-octeon/hal.c
++++ b/arch/mips/cavium-octeon/hal.c
+@@ -130,6 +130,7 @@ int octeon_usb_is_ref_clk(void)
+ {
+ 	switch (octeon_bootinfo->board_type) {
+ 	case CVMX_BOARD_TYPE_BBGW_REF:
++	case CVMX_BOARD_TYPE_CUST_NB5:
+ 		return 0;
+ 	}
+ 	return 1;

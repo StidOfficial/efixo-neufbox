@@ -1,0 +1,120 @@
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -18,6 +18,9 @@
+ #include <linux/compiler.h>
+ #include <linux/time.h>
+ #include <linux/cache.h>
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++#include <linux/ip.h>
++#endif
+ 
+ #include <asm/atomic.h>
+ #include <asm/types.h>
+@@ -227,6 +230,18 @@ enum {
+  *	@secmark: security marking
+  */
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++typedef struct {
++	uint64_t	cookie;		/* magic number */
++	void		*bucket;	/* bucket ptr */
++	uint32_t	seq;		/* TCP sequence number (if present) */
++	uint32_t	ack_seq;	/* TCP acknowledge number (if present) */
++	uint32_t	reserved1;
++	struct iphdr	ip;		/* IP header */
++	uint64_t	reserved2[4];	/* L4 ports and reserved */
++} cvm_packet_info_t;
++#endif
++
+ struct sk_buff {
+ 	/* These two members must be first. */
+ 	struct sk_buff		*next;
+@@ -313,6 +328,10 @@ struct sk_buff {
+ 
+ 	__u32			mark;
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++	cvm_packet_info_t	cvm_info;
++#endif
++
+ 	/* These elements must be at the end, see alloc_skb() for details.  */
+ 	unsigned int		truesize;
+ 	atomic_t		users;
+--- a/net/core/dev.c
++++ b/net/core/dev.c
+@@ -218,6 +218,11 @@ extern void netdev_unregister_sysfs(stru
+ #define	netdev_unregister_sysfs(dev)	do { } while(0)
+ #endif
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++/* Cavium fast-path rx/tx hooks */
++uint32_t (*cvm_ipfwd_rx_hook)(struct sk_buff *) = NULL;
++int      (*cvm_ipfwd_tx_hook)(struct sk_buff *) = NULL;
++#endif
+ 
+ /*******************************************************************************
+ 
+@@ -1421,6 +1426,13 @@ int dev_queue_xmit(struct sk_buff *skb)
+ 	struct Qdisc *q;
+ 	int rc = -ENOMEM;
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++	if (cvm_ipfwd_tx_hook) {
++		if (cvm_ipfwd_tx_hook(skb) == (-ENOMEM))
++			goto out_kfree_skb;
++	}
++#endif
++
+ 	/* GSO will handle the following emulations directly. */
+ 	if (netif_needs_gso(dev, skb))
+ 		goto gso;
+@@ -1765,6 +1777,13 @@ int netif_receive_skb(struct sk_buff *sk
+ 	int ret = NET_RX_DROP;
+ 	__be16 type;
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++	if (cvm_ipfwd_rx_hook) {
++		if (!cvm_ipfwd_rx_hook(skb))
++			return NET_RX_SUCCESS;
++	}
++#endif
++
+ 	/* if we've gotten here through NAPI, check netpoll */
+ 	if (skb->dev->poll && netpoll_rx(skb))
+ 		return NET_RX_DROP;
+@@ -3571,3 +3590,8 @@ EXPORT_SYMBOL(dev_load);
+ #endif
+ 
+ EXPORT_PER_CPU_SYMBOL(softnet_data);
++
++#ifdef CONFIG_CAVIUM_OCTEON_IPFWD_OFFLOAD
++EXPORT_SYMBOL(cvm_ipfwd_rx_hook);
++EXPORT_SYMBOL(cvm_ipfwd_tx_hook);
++#endif 
+--- a/net/ipv4/netfilter/ip_conntrack_proto_tcp.c
++++ b/net/ipv4/netfilter/ip_conntrack_proto_tcp.c
+@@ -560,6 +560,10 @@ static void tcp_sack(const struct sk_buf
+ 	}
+ }
+ 
++#ifdef CAVIUM_OCTEON_IPFWD_OFFLOAD
++extern uint32_t (*cvm_ipfwd_rx_hook)(struct sk_buff *);
++#endif 
++
+ static int tcp_in_window(struct ip_ct_tcp *state,
+ 			 enum ip_conntrack_dir dir,
+ 			 unsigned int index,
+@@ -572,6 +576,13 @@ static int tcp_in_window(struct ip_ct_tc
+ 	__u32 seq, ack, sack, end, win, swin;
+ 	int res;
+ 
++#ifdef CAVIUM_OCTEON_IPFWD_OFFLOAD
++	if (cvm_ipfwd_rx_hook) {
++		if (skb->cvm_info.cookie == ~0x12345ull)
++			return 1;
++	}
++#endif
++
+ 	/*
+ 	 * Get the required data from the packet.
+ 	 */

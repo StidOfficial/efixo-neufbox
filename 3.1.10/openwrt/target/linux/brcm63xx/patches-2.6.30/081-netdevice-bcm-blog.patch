@@ -1,0 +1,28 @@
+--- a/include/linux/netdevice.h
++++ b/include/linux/netdevice.h
+@@ -48,6 +48,10 @@
+ #include <net/dcbnl.h>
+ #endif
+ 
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++#include <linux/blog.h>
++#endif
++
+ struct vlan_group;
+ struct ethtool_ops;
+ struct netpoll_info;
+@@ -705,6 +709,14 @@ struct net_device
+ 
+ 	struct net_device_stats	stats;
+ 
++#if defined(CONFIG_BCM63XX) && defined(CONFIG_BLOG)
++	/* Update the bstats */
++	void (*put_stats)(struct net_device *dev_p, BlogStats_t * bStats_p);
++	/* Clear the stats information */
++	void (*clr_stats)(struct net_device *dev_p);
++#endif
++
++
+ #ifdef CONFIG_WIRELESS_EXT
+ 	/* List of functions to handle Wireless Extensions (instead of ioctl).
+ 	 * See <net/iw_handler.h> for details. Jean II */

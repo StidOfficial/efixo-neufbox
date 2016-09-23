@@ -1,0 +1,15 @@
+--- a/networking/wget.c
++++ b/networking/wget.c
+@@ -916,6 +916,12 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 				/* eat all remaining headers */;
+ 			goto read_response;
+ 		case 200:
++			/* Bogus HTTP server send us 200 OK even if, RANGE support not available
++			 */
++			if (beg_range) {
++				bb_error_msg("RANGE not available: GET 200 OK");
++				beg_range = xlseek(output_fd, 0, SEEK_SET);
++			}
+ /*
+ Response 204 doesn't say "null file", it says "metadata
+ has changed but data didn't":

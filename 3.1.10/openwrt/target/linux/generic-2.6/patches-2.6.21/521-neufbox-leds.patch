@@ -1,0 +1,25 @@
+--- a/drivers/leds/Kconfig
++++ b/drivers/leds/Kconfig
+@@ -108,6 +108,12 @@ config LEDS_PWM
+         help
+           This option enables support for pwm driven LEDs
+ 
++config LEDS_NEUFBOX
++	tristate "LEDS Support for neufbox platform"
++	depends on LEDS_CLASS
++	help
++	  This option enables support for LED on NeufBox
++
+ comment "LED Triggers"
+ 
+ config LEDS_TRIGGERS
+--- a/drivers/leds/Makefile
++++ b/drivers/leds/Makefile
+@@ -16,6 +16,7 @@ obj-$(CONFIG_LEDS_NET48XX)		+= leds-net4
+ obj-$(CONFIG_LEDS_WRAP)			+= leds-wrap.o
+ obj-$(CONFIG_LEDS_H1940)		+= leds-h1940.o
+ obj-$(CONFIG_LEDS_COBALT)		+= leds-cobalt.o
++obj-$(CONFIG_LEDS_NEUFBOX)             += leds-neufbox.o
+ obj-$(CONFIG_LEDS_GPIO)			+= leds-gpio.o
+ obj-$(CONFIG_LEDS_PWM)			+= leds-pwm.o
+ 

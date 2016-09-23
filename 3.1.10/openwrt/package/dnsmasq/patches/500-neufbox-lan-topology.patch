@@ -1,0 +1,92 @@
+--- a/src/rfc2131.c
++++ b/src/rfc2131.c
+@@ -15,6 +15,11 @@
+ */
+ 
+ #include "dnsmasq.h"
++#ifdef HAVE_LIBNBD
++#include "nbd/core.h"
++#include "nbd/stb.h"
++#include "nbd/lan.h"
++#endif
+ 
+ #ifdef HAVE_DHCP
+ 
+@@ -1028,6 +1033,28 @@ size_t dhcp_reply(struct dhcp_context *c
+       if (message || !(context = narrow_context(context, mess->yiaddr, tagif_netid)))
+ 	return 0;
+ 
++#ifdef HAVE_LIBNBD
++      {
++	      char mac[32];
++	      char ip[32];
++
++
++	      snprintf(mac, sizeof( mac ), "%02x:%02x:%02x:%02x:%02x:%02x",
++			      mess->chaddr[0], mess->chaddr[1],
++			      mess->chaddr[2], mess->chaddr[3],
++			      mess->chaddr[4], mess->chaddr[5]);
++	      snprintf(ip, sizeof( ip ), "%s", inet_ntoa(mess->yiaddr));
++
++	      nbd_open();
++	      if ((opt = option_find(mess, sz, OPTION_VENDOR_ID, 9)) && 
++			      strncmp(option_ptr(opt, 0), "NEUFTV", 6) == 0)
++		      nbd_stb_add(mac, ip, hostname);
++	      else
++		      nbd_lan_topology_update(mac, ip, hostname);
++	      nbd_close();
++      }
++#endif
++
+       log_packet("DHCPOFFER" , &mess->yiaddr, emac, emac_len, iface_name, NULL, mess->xid);
+ 
+       if (context->netid.net)
+@@ -1129,6 +1156,27 @@ size_t dhcp_reply(struct dhcp_context *c
+ 	}
+       
+       log_packet("DHCPREQUEST", &mess->yiaddr, emac, emac_len, iface_name, NULL, mess->xid);
++
++#ifdef HAVE_LIBNBD
++      {
++	      char mac[32];
++	      char ip[32];
++
++	      snprintf(mac, sizeof( mac ), "%02x:%02x:%02x:%02x:%02x:%02x",
++			      mess->chaddr[0], mess->chaddr[1],
++			      mess->chaddr[2], mess->chaddr[3],
++			      mess->chaddr[4], mess->chaddr[5]);
++	      snprintf(ip, sizeof( ip ), "%s", inet_ntoa(mess->yiaddr));
++
++	      nbd_open();
++	      if ((opt = option_find(mess, sz, OPTION_VENDOR_ID, 9)) && 
++			      strncmp(option_ptr(opt, 0), "NEUFTV", 6) == 0)
++		      nbd_stb_add(mac, ip, hostname);
++	      else
++		      nbd_lan_topology_update(mac, ip, hostname);
++	      nbd_close();
++      }
++#endif
+  
+       if (!message)
+ 	{
+@@ -1311,6 +1359,20 @@ size_t dhcp_reply(struct dhcp_context *c
+ 	  else
+ 	    override = lease->override;
+ 
++	  {
++		  char mac[32];
++		  char ip[32];
++
++		  snprintf(mac, sizeof( mac ), "%02x:%02x:%02x:%02x:%02x:%02x",
++				  mess->chaddr[0], mess->chaddr[1],
++				  mess->chaddr[2], mess->chaddr[3],
++				  mess->chaddr[4], mess->chaddr[5]);
++		  snprintf(ip, sizeof( ip ), "%s", inet_ntoa(mess->yiaddr));
++
++		  nbd_open();
++		  nbd_lan_topology_update(mac, ip, hostname);
++		  nbd_close();
++	  }
+ 	  log_packet("DHCPACK", &mess->yiaddr, emac, emac_len, iface_name, hostname, mess->xid);  
+ 	  
+ 	  clear_packet(mess, end);

@@ -1,0 +1,433 @@
+--- a/arch/mips/mm/tlbex.c
++++ b/arch/mips/mm/tlbex.c
+@@ -35,6 +35,33 @@
+ #include <asm/smp.h>
+ #include <asm/war.h>
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON) && defined(CONFIG_TEMPORARY_SCRATCHPAD_FOR_KERNEL) && defined(CONFIG_SMP) && defined(CONFIG_64BIT)
++#if !defined(CONFIG_MIPS_MT_SMTC) && CONFIG_TEMPORARY_SCRATCHPAD_FOR_KERNEL
++#define OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++#endif
++#endif
++
++#ifdef OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++#define USER_REGISTER_TO_USE 1 // $1 saved, used, restored during refill handler
++#if (defined(MODULE_START) && (MODULE_START & 0x000000FFFFFFFFFFULL)) || (VMALLOC_START & 0x000000FFFFFFFFFFULL)
++#define OCTEON_FAST_PATH_TLB_REFILL_HANDLER_SAVEK0
++#endif
++#endif
++
++// stick this here for now
++#define PGDIR_BITS 10 // PTRS_PER_PGD = 1 << PGDIR_BITS
++#if defined(CONFIG_CPU_CAVIUM_OCTEON)
++#define TLB_SEGBITS 49
++#else
++#define TLB_SEGBITS (PGDIR_SHIFT+PGDIR_BITS) // really is just 40
++#endif
++#if TLB_SEGBITS > (PGDIR_SHIFT+PGDIR_BITS)
++#define CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++#endif
++
++extern void tlb_do_page_fault_0(void);
++extern void tlb_do_page_fault_1(void);
++
+ static __init int __attribute__((unused)) r45k_bvahwbug(void)
+ {
+ 	/* XXX: We should probe for the presence of this bug, but we don't. */
+@@ -191,6 +218,8 @@ static __initdata struct insn insn_table
+ 	{ insn_invalid, 0, 0 }
+ };
+ 
++#define insn_is_eret(inst) (((inst) & 0xFE00003F) == 0x42000018)
++
+ #undef M
+ 
+ static __init u32 build_rs(u32 arg)
+@@ -475,6 +504,9 @@ enum label_id {
+ 	label_smp_pgtable_change,
+ 	label_r3000_write_probe_fail,
+ 	label_tlb_huge_update,
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++        label_large_segbits_fault,
++#endif
+ };
+ 
+ struct label {
+@@ -511,6 +543,9 @@ L_LA(_nopage_tlbm)
+ L_LA(_smp_pgtable_change)
+ L_LA(_r3000_write_probe_fail)
+ L_LA(_tlb_huge_update)
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++L_LA(_large_segbits_fault)
++#endif
+ 
+ /* convenience macros for instructions */
+ #ifdef CONFIG_64BIT
+@@ -1204,6 +1239,7 @@ static __init void build_huge_tlb_write_
+  * TMP and PTR are scratch.
+  * TMP will be clobbered, PTR will hold the pmd entry.
+  */
++typedef enum label_id enum_label_id;
+ static __init void
+ build_get_pmde64(u32 **p, struct label **l, struct reloc **r,
+ 		 unsigned int tmp, unsigned int ptr)
+@@ -1214,11 +1250,29 @@ build_get_pmde64(u32 **p, struct label *
+ 	 * The vmalloc handling is not in the hotpath.
+ 	 */
+ 	i_dmfc0(p, tmp, C0_BADVADDR);
++
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++        //
++        // The kernel currently implicitely assumes that the MIPS SEGBITS
++        // parameter for the processor is (PGDIR_SHIFT+PGDIR_BITS) or less, and will never allocate virtual
++        // addresses outside the maximum range for SEGBITS = (PGDIR_SHIFT+PGDIR_BITS). But that
++        // doesn't prevent user code from accessing the higher xuseg addresses.
++        // Here, we make sure that everything but the lower xuseg addresses
++        // goes down the module_alloc/vmalloc path.
++        //
++        i_dsrl32(p, ptr, tmp, PGDIR_SHIFT+PGDIR_BITS-32);
++#ifdef MODULE_START
++        il_bnez(p, r, ptr, label_module_alloc);
++#else
++        il_bnez(p, r, ptr, label_vmalloc);
++#endif
++#else // CHECK_FOR_HIGH_SEGBITS_ADDRESSES
+ #ifdef MODULE_START
+ 	il_bltz(p, r, tmp, label_module_alloc);
+ #else
+ 	il_bltz(p, r, tmp, label_vmalloc);
+ #endif
++#endif // CHECK_FOR_HIGH_SEGBITS_ADDRESSES
+ 	/* No i_nop needed here, since the next insn doesn't touch TMP. */
+ 
+ #ifdef CONFIG_SMP
+@@ -1267,7 +1321,7 @@ build_get_pmde64(u32 **p, struct label *
+  */
+ static __init void
+ build_get_pgd_vmalloc64(u32 **p, struct label **l, struct reloc **r,
+-			unsigned int bvaddr, unsigned int ptr)
++			unsigned int bvaddr, unsigned int ptr, unsigned int is_refill)
+ {
+ 	long swpd = (long)swapper_pg_dir;
+ 
+@@ -1275,6 +1329,21 @@ build_get_pgd_vmalloc64(u32 **p, struct
+ 	long modd = (long)module_pg_dir;
+ 
+ 	l_module_alloc(l, *p);
++#else
++	l_vmalloc(l, *p);
++#endif
++
++        if(is_refill) {
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++           // branch to large_segbits_fault if xuseg or xsseg address
++           il_bgez(p, r, bvaddr, label_large_segbits_fault);
++#endif
++#ifdef OCTEON_FAST_PATH_TLB_REFILL_HANDLER_SAVEK0
++           i_move(p, USER_REGISTER_TO_USE, bvaddr);
++#endif
++        }
++
++#ifdef MODULE_START
+ 	/*
+ 	 * Assumption:
+ 	 * VMALLOC_START >= 0xc000000000000000UL
+@@ -1308,7 +1377,6 @@ build_get_pgd_vmalloc64(u32 **p, struct
+ 	else
+ 		i_LA(p, ptr, VMALLOC_START);
+ #else
+-	l_vmalloc(l, *p);
+ 	i_LA(p, ptr, VMALLOC_START);
+ #endif
+ 	i_dsubu(p, bvaddr, bvaddr, ptr);
+@@ -1321,6 +1389,23 @@ build_get_pgd_vmalloc64(u32 **p, struct
+ 		il_b(p, r, label_vmalloc_done);
+ 		i_daddiu(p, ptr, ptr, rel_lo(swpd));
+ 	}
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++        if(is_refill) {
++           l_large_segbits_fault(l, *p);
++           //
++           // We get here if we are an xsseg address, or if we are
++           // an xuseg address above (PGDIR_SHIFT+PGDIR_BITS) boundary.
++           //
++           // Ignoring xsseg (assume disabled so would generate address
++           // errors?), the only remaining possibility is the upper xuseg addresses.
++           // On processors with TLB_SEGBITS <= PGDIR_SHIFT+PGDIR_BITS, these addresses
++           // would have taken an address error. We try to mimic that
++           // here by taking a load/istream page fault.
++           //
++           i_j(p, (unsigned long)tlb_do_page_fault_0 & 0x0fffffff);
++           i_nop(p);
++        }
++#endif
+ }
+ 
+ #else /* !CONFIG_64BIT */
+@@ -1532,6 +1617,149 @@ static __init void build_huge_update_ent
+ 
+ #endif
+ 
++#ifdef OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++
++static void __init build_octeon_fast_tlb_refill_handler (u32 **p,
++                 struct label **l,
++                 struct reloc **r,
++		 unsigned int tmp, // K0
++                 unsigned int ptr // K1
++                 )
++{
++//
++// This function is an optimized refill handler for OCTEON. It will work for
++// the case CONFIG_SMP && CONFIG_64BIT && !CONFIG_MIPS_MT_SMTC.
++// It gets part of it's speedup from moving
++// the instructions around. But most of its speedup comes from
++// the use of a CVMSEG LM scratch register
++// (i.e. CONFIG_TEMPORARY_SCRATCHPAD_FOR_KERNEL > 0). The speedup is
++// about 18 cycles over the unoptimized version.
++//
++// this function is a replacement for these functions:
++//	build_get_pmde64(&p, &l, &r, K0, K1); /* get pmd in K1 */
++//#ifdef CONFIG_HUGETLB_PAGE
++//	build_is_huge_pte(&p, &r, K0, K1, label_tlb_huge_update);
++//#endif
++//	build_get_ptep(&p, K0, K1);
++//	build_update_entries(&p, K0, K1);
++//	build_tlb_write_entry(&p, &l, &r, tlb_random);
++//	l_leave(&l, p);
++//#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++//	i_LW(&p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
++//#endif
++//	i_eret(&p); /* return from trap */
++//
++
++        u32 *initial_p = *p;
++	long pgdc = (long)pgd_current;                                                         // build_get_pmde64
++
++#ifdef CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++
++	i_dmfc0(p, tmp, C0_BADVADDR);                                                          // build_get_pmde64
++
++	i_dmfc0(p, ptr, C0_CONTEXT);                                                           // build_get_pmde64
++
++	i_SW(p, USER_REGISTER_TO_USE, TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(0), 0);           // NEW
++
++        i_dsrl32(p, USER_REGISTER_TO_USE, tmp, PGDIR_SHIFT+PGDIR_BITS-32);                     // build_get_pmde64
++
++#ifdef MODULE_START
++	il_bnez(p, r, USER_REGISTER_TO_USE, label_module_alloc);                               // build_get_pmde64
++#else
++	il_bnez(p, r, USER_REGISTER_TO_USE, label_vmalloc);                                    // build_get_pmde64
++#endif
++	i_LA_mostly(p, USER_REGISTER_TO_USE, pgdc);                                            // build_get_pmde64
++
++	i_dsrl(p, ptr, ptr, 23);                                                               // build_get_pmde64
++
++#else // CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++
++	i_dmfc0(p, ptr, C0_CONTEXT);                                                           // build_get_pmde64
++
++	i_dmfc0(p, tmp, C0_BADVADDR);                                                          // build_get_pmde64
++
++	i_SW(p, USER_REGISTER_TO_USE, TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(0), 0);           // NEW
++	i_LA_mostly(p, USER_REGISTER_TO_USE, pgdc);                                            // build_get_pmde64
++
++	i_dsrl(p, ptr, ptr, 23);                                                               // build_get_pmde64
++
++#ifdef MODULE_START
++	il_bltz(p, r, tmp, label_module_alloc);                                                // build_get_pmde64
++#else
++	il_bltz(p, r, tmp, label_vmalloc);                                                     // build_get_pmde64
++#endif
++
++#endif // CHECK_FOR_HIGH_SEGBITS_ADDRESSES
++
++	i_daddu(p, ptr, ptr, USER_REGISTER_TO_USE);                                            // build_get_pmde64
++
++	// i_dmfc0(p, tmp, C0_BADVADDR);                                                       // build_get_pmde64
++	i_ld(p, ptr, rel_lo(pgdc), ptr);                                                       // build_get_pmde64
++
++#ifdef OCTEON_FAST_PATH_TLB_REFILL_HANDLER_SAVEK0
++        // the module_alloc and/or vmalloc routines may mangle K0/tmp, so need to copy K0 to USER_REGISTER_TO_USE
++        i_move(p, USER_REGISTER_TO_USE, tmp);                                                  // NEW
++#define LOC_REG_TMP USER_REGISTER_TO_USE
++#define LOC_REG_USER tmp
++#else
++#define LOC_REG_TMP tmp
++#define LOC_REG_USER USER_REGISTER_TO_USE
++#endif
++
++	l_vmalloc_done(l, *p);                                                                 // build_get_pmde64
++
++        // fall-through case =   K0 has badvaddr                K1 has *pgd_current       USER may have badvaddr
++        // vmalloc case      =   K0 has badvaddr-VMALLOC_START  K1 has swapper_pg_dir     USER may have badvaddr
++        // module case       =   K0 has badvaddr-MODULE_START   K1 has module_pg_dir      USER may have badvaddr
++
++	if (PGDIR_SHIFT - 3 < 32)		/* get pgd offset in bytes */                  // build_get_pmde64
++		i_dsrl(p, LOC_REG_USER, tmp, PGDIR_SHIFT-3);                                   // build_get_pmde64
++	else                                                                                   // build_get_pmde64
++		i_dsrl32(p, LOC_REG_USER, tmp, PGDIR_SHIFT - 3 - 32);                          // build_get_pmde64
++
++	i_andi(p, LOC_REG_USER, LOC_REG_USER, (PTRS_PER_PGD - 1)<<3);                          // build_get_pmde64
++
++	i_daddu(p, ptr, ptr, LOC_REG_USER); /* add in pgd offset */                            // build_get_pmde64
++	// i_dmfc0(p, LOC_REG_TMP, C0_BADVADDR); /* get faulting address */                    // build_get_pmde64
++	i_dsrl(p, LOC_REG_USER, LOC_REG_TMP, PMD_SHIFT-3); /* get pmd offset in bytes */       // build_get_pmde64
++
++	i_ld(p, ptr, 0, ptr); /* get pmd pointer */                                            // build_get_pmde64
++	i_andi(p, LOC_REG_USER, LOC_REG_USER, (PTRS_PER_PMD - 1)<<3);                          // build_get_pmde64
++
++	GET_CONTEXT(p, LOC_REG_TMP); /* get context reg */                                     // build_get_ptep
++
++	i_daddu(p, ptr, ptr, LOC_REG_USER); /* add in pmd offset */                            // build_get_pmde64
++
++#ifdef CONFIG_HUGETLB_PAGE
++	build_is_huge_pte(p, r, LOC_REG_USER, ptr, label_tlb_huge_update);
++	// i_LW(p, ptr, 0, ptr);                                                               // build_get_ptep
++#else // CONFIG_HUGETLB_PAGE
++	i_LW(p, LOC_REG_USER, 0, ptr);                                                         // build_get_ptep
++#endif // CONFIG_HUGETLB_PAGE
++
++        build_adjust_context(p, LOC_REG_TMP);                                                  // build_get_ptep
++
++	i_ADDU(p, ptr, LOC_REG_USER, LOC_REG_TMP); /* add in offset */                         // build_get_ptep
++
++	build_update_entries(p, LOC_REG_TMP, ptr);
++	build_tlb_write_entry(p, l, r, tlb_random);
++	l_leave(l, *p);
++
++	i_LW(p, USER_REGISTER_TO_USE, TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(0), 0);           // NEW
++
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++	i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
++#endif
++
++	i_eret(p); /* return from trap */
++
++        while(*p - initial_p < 31) i_nop(p); // make the total instruction count be 31 or more
++}
++#undef LOC_REG_TMP
++#undef LOC_REG_USER
++
++#endif // OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++
+ static void __init build_r4000_tlb_refill_handler(void)
+ {
+ 	u32 *p = tlb_handler;
+@@ -1549,6 +1777,10 @@ static void __init build_r4000_tlb_refil
+ 	/*
+ 	 * create the plain linear handler
+ 	 */
++#ifdef OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++        build_octeon_fast_tlb_refill_handler(&p, &l, &r, K0, K1);
++#else // OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++
+ 	if (bcm1250_m3_war()) {
+ 		i_MFC0(&p, K0, C0_BADVADDR);
+ 		i_MFC0(&p, K1, C0_ENTRYHI);
+@@ -1577,13 +1809,15 @@ static void __init build_r4000_tlb_refil
+ #endif
+ 	i_eret(&p); /* return from trap */
+ 
++#endif // OCTEON_FAST_PATH_TLB_REFILL_HANDLER
++
+ #ifdef CONFIG_HUGETLB_PAGE
+ 	build_huge_update_entries(&p, &l, K0, K1);
+ 	build_huge_tlb_write_entry(&p, &l, &r, K0, tlb_random);
+ #endif
+ 
+ #ifdef CONFIG_64BIT
+-	build_get_pgd_vmalloc64(&p, &l, &r, K0, K1);
++	build_get_pgd_vmalloc64(&p, &l, &r, K0, K1, 1/*is_refill*/);
+ #endif
+ 
+ 	/*
+@@ -1622,27 +1856,56 @@ static void __init build_r4000_tlb_refil
+ 	} else {
+ 		u32 *split = tlb_handler + 30;
+ 
++                int split_on_eret = insn_is_eret(*split);
++                int next_is_eret = 0;
+ 		/*
+ 		 * Find the split point.
+ 		 */
+-		if (insn_has_bdelay(relocs, split - 1))
++                if(split_on_eret) {
++                   // the original split choice pointed to an eret
++                   // no need to insert a branch in this case, code does not flow past an eret
++                   // for cleanliness, we will add a NOP instruction below, which will be the 32nd instruction
++		   split++;
++                }
++                else {
++                   if (insn_is_eret(split[1])) {
++                      // the instruction following the original split choice is an eret
++                      // no need to insert a branch in this case, code does not flow past an eret
++                      // existing eret instruction will be the 32nd
++                      split_on_eret = 1;
++                      next_is_eret = 1;
++                      split += 2;
++                   }
++                   else {
++                      // the normal case - not an eret
++                      if (insn_has_bdelay(relocs, split - 1))
+ 			split--;
++                   }
++                }
+ 
+ 		/* Copy first part of the handler. */
+ 		copy_handler(relocs, labels, tlb_handler, split, f);
+-		f += split - tlb_handler;
++                f += split - tlb_handler;
+ 
+-		/* Insert branch. */
+-		l_split(&l, final_handler);
+-		il_b(&f, &r, label_split);
+-		if (insn_has_bdelay(relocs, split))
+-			i_nop(&f);
+-		else {
+-			copy_handler(relocs, labels, split, split + 1, f);
+-			move_labels(labels, f, f + 1, -1);
+-			f++;
+-			split++;
+-		}
++                if(split_on_eret) {
++                   if(!next_is_eret) {
++                      // probably not necessary, but seems cleanly to insert a NOP as the 32nd instruction
++                      i_nop(&f);
++                   }
++                }
++                else {
++                   /* Insert branch. */
++                   l_split(&l, final_handler);
++                   il_b(&f, &r, label_split);
++                   if (insn_has_bdelay(relocs, split))
++                           i_nop(&f);
++                   else {
++                           copy_handler(relocs, labels, split, split + 1, f);
++                           move_labels(labels, f, f + 1, -1);
++                           f++;
++                           split++;
++                   }
++                }
+ 
+ 		/* Copy the rest of the handler. */
+ 		copy_handler(relocs, labels, split, p, final_handler);
+@@ -1682,9 +1945,6 @@ static void __init build_r4000_tlb_refil
+  * Only the fastpath gets synthesized at runtime, the slowpath for
+  * do_page_fault remains normal asm.
+  */
+-extern void tlb_do_page_fault_0(void);
+-extern void tlb_do_page_fault_1(void);
+-
+ #define __tlb_handler_align \
+ 	__attribute__((__aligned__(1 << CONFIG_MIPS_L1_CACHE_SHIFT)))
+ 
+@@ -2069,7 +2329,7 @@ build_r4000_tlbchange_handler_tail(u32 *
+ 	i_eret(p); /* return from trap */
+ 
+ #ifdef CONFIG_64BIT
+-	build_get_pgd_vmalloc64(p, l, r, tmp, ptr);
++	build_get_pgd_vmalloc64(p, l, r, tmp, ptr, 0/*is_refill*/);
+ #endif
+ }
+ 

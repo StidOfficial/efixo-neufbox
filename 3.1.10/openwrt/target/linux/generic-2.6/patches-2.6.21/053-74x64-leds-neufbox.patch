@@ -1,0 +1,101 @@
+--- a/drivers/gpio/74x164.c
++++ b/drivers/gpio/74x164.c
+@@ -12,6 +12,7 @@
+ #include <linux/module.h>
+ #include <linux/init.h>
+ #include <linux/slab.h>
++#include <linux/spinlock.h>
+ #include <linux/gpio.h>
+ #include <linux/bitops.h>
+ #include <linux/platform_device.h>
+@@ -22,7 +23,8 @@
+ struct gen_74x164_chip {
+        struct device           *parent;
+        struct gpio_chip        gpio_chip;
+-       struct mutex            lock;
++       spinlock_t              lock;
++       int                     dirty;
+        long                    mask;
+ };
+ 
+@@ -50,10 +52,11 @@ static int gen_74x164_get_value(struct g
+ {
+        struct gen_74x164_chip *chip = gpio_to_chip(gc);
+        int ret;
++       unsigned long flags;
+ 
+-       mutex_lock(&chip->lock);
++       spin_lock_irqsave(&chip->lock, flags);
+        ret = test_bit(offset, &chip->mask);
+-       mutex_unlock(&chip->lock);
++       spin_unlock_irqrestore(&chip->lock, flags);
+ 
+        return ret;
+ }
+@@ -66,17 +69,37 @@ static void gen_74x164_set_value(struct
+        long mask;
+        int refresh;
+        int i;
++       unsigned long flags;
+ 
+        chip = gpio_to_chip(gc);
+        pdata = chip->parent->platform_data;
+ 
+-       mutex_lock(&chip->lock);
++       spin_lock_irqsave(&chip->lock, flags);
+        if (val)
+                refresh = (test_and_set_bit(offset, &chip->mask) != val);
+        else
+                refresh = (test_and_clear_bit(offset, &chip->mask) != val);
+ 
+        if (refresh) {
++	       chip->dirty = 1;
++       }
++       spin_unlock_irqrestore(&chip->lock, flags);
++}
++
++struct gen_74x164_chip *neufbox_chip;
++void gen_74x164_sync(void)
++{
++       struct gen_74x164_chip *chip = neufbox_chip;
++       struct gen_74x164_platform_data *pdata;
++       long mask;
++       int i;
++       unsigned long flags;
++
++       pdata = chip->parent->platform_data;
++
++       spin_lock_irqsave(&chip->lock, flags);
++       if (chip->dirty) {
++	       chip->dirty = 0;
+                mask = chip->mask;
+                for (i = pdata->ngpio - 1; i >= 0; --i) {
+                        gpio_set_value(pdata->gpio_pin_data, test_bit(i, &mask));
+@@ -84,8 +107,9 @@ static void gen_74x164_set_value(struct
+                        gpio_set_value(pdata->gpio_pin_clk, 0);
+                }
+        }
+-       mutex_unlock(&chip->lock);
++       spin_unlock_irqrestore(&chip->lock, flags);
+ }
++EXPORT_SYMBOL(gen_74x164_sync);
+ 
+ static int __devinit gen_74x164_probe(struct platform_device *pdev)
+ {
+@@ -110,6 +134,7 @@ static int __devinit gen_74x164_probe(st
+                dev_err(&pdev->dev, "no memory for private data\n");
+                return -ENOMEM;
+        }
++       neufbox_chip = chip;
+ 
+        err = gpio_request(pdata->gpio_pin_clk, pdev->name);
+        if (err) {
+@@ -142,7 +167,7 @@ static int __devinit gen_74x164_probe(st
+        }
+ 
+        chip->parent = &pdev->dev;
+-       mutex_init(&chip->lock);
++       spin_lock_init(&chip->lock);
+ 
+        gc = &chip->gpio_chip;
+ 

@@ -1,0 +1,37 @@
+--- a/drivers/usb/serial/option.c
++++ b/drivers/usb/serial/option.c
+@@ -754,15 +754,16 @@ static void option_indat_callback(struct
+ 		} else 
+ 			dbg("%s: empty read urb received", __func__);
+ 		tty_kref_put(tty);
++	}
+ 
+-		/* Resubmit urb so we continue receiving */
+-		if (port->port.count && status != -ESHUTDOWN) {
+-			err = usb_submit_urb(urb, GFP_ATOMIC);
+-			if (err)
+-				printk(KERN_ERR "%s: resubmit read urb failed. "
+-					"(%d)", __func__, err);
+-		}
++	/* Resubmit urb so we continue receiving */
++	if (port->port.count && status != -ESHUTDOWN) {
++		err = usb_submit_urb(urb, GFP_ATOMIC);
++		if (err)
++			printk(KERN_ERR "%s: resubmit read urb failed. "
++					"(%d)\n", __func__, err);
+ 	}
++
+ 	return;
+ }
+ 
+@@ -936,6 +937,10 @@ static int option_open(struct tty_struct
+ 		urb->dev = serial->dev;
+ 		/* usb_settoggle(urb->dev, usb_pipeendpoint(urb->pipe),
+ 				usb_pipeout(urb->pipe), 0); */
++
++		/* PATCH cpn: fix bug when writing on hauwei E220 voice tty */
++		/* make sure endpoint data toggle is synchronized with the device */
++		usb_clear_halt(urb->dev, urb->pipe);
+ 	}
+ 
+ 	option_send_setup(tty, port);

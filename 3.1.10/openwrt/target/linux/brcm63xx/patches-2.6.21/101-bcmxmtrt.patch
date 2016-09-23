@@ -1,0 +1,26 @@
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -2833,6 +2833,12 @@ config PPPOATM
+ 	  which can lead to bad results if the ATM peer loses state and
+ 	  changes its encapsulation unilaterally.
+ 
++config BCM_XTMRT
++	tristate "Broadcom XTMRT"
++	depends on BCM63XX
++	help
++	  Support for Broadcom xtmrt
++
+ config SLIP
+ 	tristate "SLIP (serial line) support"
+ 	---help---
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -204,7 +204,7 @@ obj-$(CONFIG_FEC_8XX) += fec_8xx/
+ obj-$(CONFIG_PASEMI_MAC) += pasemi_mac.o
+ obj-$(CONFIG_BCM53XX)	+= bcm53xx.o
+ obj-$(CONFIG_BCM54XX)	+= bcm54xx.o
+-
++obj-$(CONFIG_BCM_XTMRT) += bcmxtmrt.o
+ obj-$(CONFIG_MACB) += macb.o
+ 
+ obj-$(CONFIG_ARM) += arm/

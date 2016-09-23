@@ -1,0 +1,271 @@
+--- a/net/8021q/vlan.c
++++ b/net/8021q/vlan.c
+@@ -51,6 +51,10 @@ const char vlan_version[] = DRV_VERSION;
+ static const char vlan_copyright[] = "Ben Greear <greearb@candelatech.com>";
+ static const char vlan_buggyright[] = "David S. Miller <davem@redhat.com>";
+ 
++#if defined(CONFIG_BCM63XX)
++int vlan_dev_set_nfmark_to_priority(char *, int);
++#endif
++
+ static struct packet_type vlan_packet_type __read_mostly = {
+ 	.type = cpu_to_be16(ETH_P_8021Q),
+ 	.func = vlan_skb_recv, /* VLAN receive method */
+@@ -204,6 +208,92 @@ static void vlan_transfer_operstate(cons
+ 	}
+ }
+ 
++#if defined(CONFIG_BCM63XX)
++struct net_device_stats *vlan_dev_get_stats(struct net_device *dev)
++{
++	return &(dev->stats);
++}
++#ifdef CONFIG_BLOG
++static inline BlogStats_t *vlan_dev_get_bstats(struct net_device *dev)
++{
++	return &(vlan_dev_info(dev)->bstats);
++}
++static inline struct net_device_stats *vlan_dev_get_cstats(struct net_device *dev)
++{
++	return &(vlan_dev_info(dev)->cstats);
++}
++#endif
++#endif
++
++#ifdef CONFIG_BLOG
++struct net_device_stats * vlan_dev_collect_stats(struct net_device * dev_p)
++{
++	BlogStats_t bStats;
++	BlogStats_t * bStats_p;
++	struct net_device_stats *dStats_p;
++	struct net_device_stats *cStats_p;
++
++	if ( dev_p == (struct net_device *)NULL )
++		return (struct net_device_stats *)NULL;
++
++    /* JU: TBD: I have a pretty bad cold when I'm doing this port, and I can't think
++       straight, so I'll have to revisit this when I'm a bit more clear.  I need to
++       submit it though as it breaks the compile otherwise */
++	dStats_p = vlan_dev_get_stats(dev_p);
++	cStats_p = vlan_dev_get_cstats(dev_p);
++	bStats_p = vlan_dev_get_bstats(dev_p);
++
++	memset(&bStats, 0, sizeof(BlogStats_t));
++	blog_gstats(dev_p, &bStats, BSTATS_NOCLR);
++
++	memcpy( cStats_p, dStats_p, sizeof(struct net_device_stats) );
++	cStats_p->rx_packets += ( bStats.rx_packets + bStats_p->rx_packets );
++	cStats_p->tx_packets += ( bStats.tx_packets + bStats_p->tx_packets );
++	cStats_p->rx_bytes   += ( bStats.rx_bytes   + bStats_p->rx_bytes );
++	cStats_p->tx_bytes   += ( bStats.tx_bytes   + bStats_p->tx_bytes );
++	cStats_p->multicast  += ( bStats.multicast  + bStats_p->multicast );
++
++	return cStats_p;
++}
++
++void vlan_dev_update_stats(struct net_device * dev_p, BlogStats_t *blogStats_p)
++{
++	BlogStats_t * bStats_p;
++
++	if ( dev_p == (struct net_device *)NULL )
++		return;
++	bStats_p = vlan_dev_get_bstats(dev_p);
++
++	bStats_p->rx_packets += blogStats_p->rx_packets;
++	bStats_p->tx_packets += blogStats_p->tx_packets;
++	bStats_p->rx_bytes   += blogStats_p->rx_bytes;
++	bStats_p->tx_bytes   += blogStats_p->tx_bytes;
++	bStats_p->multicast  += blogStats_p->multicast;
++	return;
++}
++
++void vlan_dev_clear_stats(struct net_device * dev_p)
++{
++	BlogStats_t * bStats_p;
++	struct net_device_stats *dStats_p;
++	struct net_device_stats *cStats_p;
++
++	if ( dev_p == (struct net_device *)NULL )
++		return;
++
++	dStats_p = vlan_dev_get_stats(dev_p);
++	cStats_p = vlan_dev_get_cstats(dev_p); 
++	bStats_p = vlan_dev_get_bstats(dev_p);
++
++	blog_gstats(dev_p, NULL, BSTATS_CLR);
++	memset(bStats_p, 0, sizeof(BlogStats_t));
++	memset(dStats_p, 0, sizeof(struct net_device_stats));
++	memset(cStats_p, 0, sizeof(struct net_device_stats));
++
++	return;
++}
++#endif
++
+ int vlan_check_real_dev(struct net_device *real_dev, u16 vlan_id)
+ {
+ 	const char *name = real_dev->name;
+@@ -342,6 +432,13 @@ static int register_vlan_device(struct n
+ 	if (new_dev == NULL)
+ 		return -ENOBUFS;
+ 
++#if defined(CONFIG_BCM63XX)
++    /* If real device is a hardware switch port, the vlan device must also be */
++//  if(real_dev->priv_flags & IFF_HW_SWITCH) {
++    new_dev->priv_flags |= real_dev->priv_flags;
++//  }
++#endif
++
+ 	dev_net_set(new_dev, net);
+ 	/* need 4 bytes for extra VLAN header info,
+ 	 * hope the underlying device can handle it.
+@@ -594,6 +691,13 @@ static int vlan_ioctl_handler(struct net
+ 						   args.u.skb_priority,
+ 						   args.vlan_qos);
+ 		break;
++		
++#if defined(CONFIG_BCM63XX)
++	case SET_VLAN_NFMARK_TO_PRIORITY_CMD:
++		err = vlan_dev_set_nfmark_to_priority(args.device1,
++						   args.u.nfmark_to_priority);
++		break;
++#endif  
+ 
+ 	case SET_VLAN_FLAG_CMD:
+ 		err = -EPERM;
+--- a/net/8021q/vlan.h
++++ b/net/8021q/vlan.h
+@@ -45,6 +45,14 @@ struct vlan_dev_info {
+ 	struct proc_dir_entry			*dent;
+ 	unsigned long				cnt_inc_headroom_on_tx;
+ 	unsigned long				cnt_encap_on_xmit;
++#if defined(CONFIG_BCM63XX)
++#ifdef CONFIG_BLOG
++	BlogStats_t bstats; /* stats when the blog promiscuous layer has consumed packets */
++	struct net_device_stats cstats; /* Cummulative Device stats (rx-bytes, tx-pkts, etc...) */
++#endif
++    int nfmark_to_priority;
++#endif
++	
+ };
+ 
+ static inline struct vlan_dev_info *vlan_dev_info(const struct net_device *dev)
+--- a/include/linux/if_vlan.h
++++ b/include/linux/if_vlan.h
+@@ -328,6 +328,11 @@ enum vlan_ioctl_cmds {
+ 	SET_VLAN_FLAG_CMD,
+ 	GET_VLAN_REALDEV_NAME_CMD, /* If this works, you know it's a VLAN device, btw */
+ 	GET_VLAN_VID_CMD /* Get the VID of this VLAN (specified by name) */
++#if defined(CONFIG_BCM63XX)
++	,
++	SET_VLAN_NFMARK_TO_PRIORITY_CMD
++#endif
++	
+ };
+ 
+ enum vlan_flags {
+@@ -354,6 +359,9 @@ struct vlan_ioctl_args {
+ 		unsigned int name_type;
+ 		unsigned int bind_type;
+ 		unsigned int flag; /* Matches vlan_dev_info flags */
++#if defined(CONFIG_BCM63XX)
++		int nfmark_to_priority;
++#endif
+         } u;
+ 
+ 	short vlan_qos;   
+--- a/net/8021q/vlan_dev.c
++++ b/net/8021q/vlan_dev.c
+@@ -31,6 +31,16 @@
+ #include "vlanproc.h"
+ #include <linux/if_vlan.h>
+ 
++#if defined(CONFIG_BCM63XX)
++struct net_device_stats *vlan_dev_get_stats(struct net_device *dev);
++#ifdef CONFIG_BLOG
++extern struct net_device_stats * vlan_dev_collect_stats(struct net_device * dev_p);
++extern void vlan_dev_update_stats(struct net_device * dev_p, BlogStats_t *blogStats_p);
++extern void vlan_dev_clear_stats(struct net_device * dev_p);
++#endif
++#endif
++
++
+ /*
+  *	Rebuild the Ethernet MAC header. This is called after an ARP
+  *	(or in future other address resolution) has completed on this
+@@ -524,6 +534,36 @@ out:
+ 	return 0;
+ }
+ 
++#if defined(CONFIG_BCM63XX)
++int vlan_dev_set_nfmark_to_priority(char *dev_name, int nfmark_to_priority)
++{
++	struct net_device *dev = dev_get_by_name(&init_net, dev_name);
++
++	if (dev) {
++        if (dev->priv_flags & IFF_802_1Q_VLAN) {
++            if (nfmark_to_priority>=-1 && nfmark_to_priority <=29) {
++                vlan_dev_info(dev)->nfmark_to_priority = nfmark_to_priority;
++                dev_put(dev);
++                return 0;
++            }
++            else {
++    		    printk("invalid nfmark_to_priority\n");
++            }
++        }
++        else {
++            printk(KERN_ERR 
++             "%s: %s is not a vlan device, priv_flags: %hX.\n",
++            __FUNCTION__, dev->name, dev->priv_flags);
++        }    
++    }
++    else {
++		printk(KERN_ERR  "%s: Could not find device: %s\n", __FUNCTION__, dev_name);
++    }
++    dev_put(dev);
++    return -EINVAL;
++}
++#endif
++
+ static int vlan_dev_ioctl(struct net_device *dev, struct ifreq *ifr, int cmd)
+ {
+ 	struct net_device *real_dev = vlan_dev_info(dev)->real_dev;
+@@ -733,6 +773,13 @@ static const struct net_device_ops vlan_
+ 	.ndo_change_rx_flags	= vlan_dev_change_rx_flags,
+ 	.ndo_do_ioctl		= vlan_dev_ioctl,
+ 	.ndo_neigh_setup	= vlan_dev_neigh_setup,
++#if defined(CONFIG_BCM63XX)
++#ifdef CONFIG_BLOG
++	.ndo_get_stats = vlan_dev_collect_stats,
++#else
++	.ndo_get_stats = vlan_dev_get_stats,
++#endif
++#endif
+ };
+ 
+ static const struct net_device_ops vlan_netdev_accel_ops = {
+@@ -749,6 +796,13 @@ static const struct net_device_ops vlan_
+ 	.ndo_change_rx_flags	= vlan_dev_change_rx_flags,
+ 	.ndo_do_ioctl		= vlan_dev_ioctl,
+ 	.ndo_neigh_setup	= vlan_dev_neigh_setup,
++#if defined(CONFIG_BCM63XX)
++#ifdef CONFIG_BLOG
++	.ndo_get_stats = vlan_dev_collect_stats,
++#else
++	.ndo_get_stats = vlan_dev_get_stats,
++#endif
++#endif
+ };
+ 
+ void vlan_setup(struct net_device *dev)
+@@ -762,5 +816,11 @@ void vlan_setup(struct net_device *dev)
+ 	dev->destructor		= free_netdev;
+ 	dev->ethtool_ops	= &vlan_ethtool_ops;
+ 
++#if defined(CONFIG_BCM63XX)
++#ifdef CONFIG_BLOG
++	dev->put_stats = vlan_dev_update_stats;
++	dev->clr_stats = vlan_dev_clear_stats;
++#endif
++#endif
+ 	memset(dev->broadcast, 0, ETH_ALEN);
+ }

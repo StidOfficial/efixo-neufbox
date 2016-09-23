@@ -1,0 +1,40 @@
+This's a hardcoded check in checkusername() that won't
+allow an empty password crypt since that's a common
+misconfiguration.
+
+--- a/svr-auth.c
++++ b/svr-auth.c
+@@ -248,6 +248,7 @@ static int checkusername(unsigned char *
+ 		return DROPBEAR_FAILURE;
+ 	}
+ 
++#if 0
+ 	/* check for an empty password */
+ 	if (ses.authstate.pw_passwd[0] == '\0') {
+ 		TRACE(("leave checkusername: empty pword"))
+@@ -256,6 +257,7 @@ static int checkusername(unsigned char *
+ 		send_msg_userauth_failure(0, 1);
+ 		return DROPBEAR_FAILURE;
+ 	}
++#endif
+ 
+ 	TRACE(("shell is %s", ses.authstate.pw_shell))
+ 
+--- a/svr-authpasswd.c
++++ b/svr-authpasswd.c
+@@ -60,6 +60,7 @@ void svr_auth_password() {
+ 	passwdcrypt = DEBUG_HACKCRYPT;
+ #endif
+ 
++#if 0
+ 	/* check for empty password - need to do this again here
+ 	 * since the shadow password may differ to that tested
+ 	 * in auth.c */
+@@ -69,6 +70,7 @@ void svr_auth_password() {
+ 		send_msg_userauth_failure(0, 1);
+ 		return;
+ 	}
++#endif
+ 
+ 	/* check if client wants to change password */
+ 	changepw = buf_getbool(ses.payload);

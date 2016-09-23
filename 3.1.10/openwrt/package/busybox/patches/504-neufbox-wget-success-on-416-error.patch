@@ -1,0 +1,12 @@
+--- a/networking/wget.c
++++ b/networking/wget.c
+@@ -871,6 +871,9 @@ However, in real world it was observed t
+ 			if (beg_range)
+ 				break;
+ 			/* fall through */
++		case 416:
++			/* got this reply when we want to continue a finished download */
++			return EXIT_SUCCESS;
+ 		default:
+ 			bb_error_msg_and_die("server returned error: %s", sanitize_string(buf));
+ 		}

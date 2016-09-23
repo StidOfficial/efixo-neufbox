@@ -1,0 +1,28 @@
+--- a/drivers/hwmon/Kconfig
++++ b/drivers/hwmon/Kconfig
+@@ -594,6 +594,15 @@ config SENSORS_HDAPS
+ 	  Say Y here if you have an applicable laptop and want to experience
+ 	  the awesome power of hdaps.
+ 
++config SENSORS_NB6
++	tristate "NB6 MCU sensors/leds PWM"
++	depends on BOARD_NEUFBOX6
++	  ---help---
++          This driver drives NB6 MCU.
++
++          It gives access to Leds PWM, sensors...
++
++
+ config HWMON_DEBUG_CHIP
+ 	bool "Hardware Monitoring Chip debugging messages"
+ 	depends on HWMON
+--- a/drivers/hwmon/Makefile
++++ b/drivers/hwmon/Makefile
+@@ -54,6 +54,7 @@ obj-$(CONFIG_SENSORS_VT1211)	+= vt1211.o
+ obj-$(CONFIG_SENSORS_VT8231)	+= vt8231.o
+ obj-$(CONFIG_SENSORS_W83627EHF)	+= w83627ehf.o
+ obj-$(CONFIG_SENSORS_W83L785TS)	+= w83l785ts.o
++obj-$(CONFIG_SENSORS_NB6)	+= nb6_hwmon.o
+ 
+ ifeq ($(CONFIG_HWMON_DEBUG_CHIP),y)
+ EXTRA_CFLAGS += -DDEBUG

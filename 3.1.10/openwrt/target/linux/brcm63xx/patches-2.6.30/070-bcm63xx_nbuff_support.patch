@@ -1,0 +1,658 @@
+--- a/include/linux/skbuff.h
++++ b/include/linux/skbuff.h
+@@ -27,6 +27,7 @@
+ #include <net/checksum.h>
+ #include <linux/rcupdate.h>
+ #include <linux/dmaengine.h>
++#include <linux/blog.h>
+ #include <linux/hrtimer.h>
+ #if defined(CONFIG_IMQ) || defined(CONFIG_IMQ_MODULE)
+ #include <linux/imq.h>
+@@ -47,6 +48,18 @@
+ #define SKB_MAX_HEAD(X)		(SKB_MAX_ORDER((X), 0))
+ #define SKB_MAX_ALLOC		(SKB_MAX_ORDER(0, 2))
+ 
++#if defined(CONFIG_BCM63XX)
++typedef void (*RecycleFuncP)(void * nbuff_p, unsigned context, unsigned flags);
++#define SKB_DATA_RECYCLE          (1<<0)
++#define SKB_RECYCLE               (1<<1)
++#define SKB_DATA_NO_RECYCLE       (~SKB_DATA_RECYCLE)        /* to mask out */
++#define SKB_NO_RECYCLE            (~SKB_RECYCLE)             /* to mask out */
++
++#if defined(CONFIG_BLOG)
++struct blog_t;
++#endif
++#endif	/* defined(CONFIG_BCM63XX) */
++
+ /* A. Checksumming of received packets by device.
+  *
+  *	NONE: device failed to checksum this packet.
+@@ -317,10 +330,55 @@ struct sk_buff {
+ 	/* These two members must be first. */
+ 	struct sk_buff		*next;
+ 	struct sk_buff		*prev;
++	struct net_device	*dev;
++	void			(*destructor)(struct sk_buff *skb);
++
++#if defined(CONFIG_BCM63XX) // BRCM change Begin
++	/* ---- cache boundary */
++	/*
++	 * Several skb fields have been regrouped together for better data locality
++	 * cache performance, 16byte cache line proximity.
++	 */
++
++	/*--- members common to fkbuff: begin here ---*/
++	union {
++		void * fkbInSkb;    /* see fkb_in_skb_test() */
++		struct sk_buff_head *list;
++	};		/* ____cacheline_aligned */
++
++	struct blog_t	*blog_p;    /* defined(CONFIG_BLOG) */
++
++	unsigned char		*data;
++	unsigned int    len;
++
++	unsigned int	mark;
++	unsigned int	priority;
++
++	/* Recycling of preallocated skb or data buffer */
++	RecycleFuncP	recycle_hook;
++	union {
++		__u32       recycle_context;	
++		struct sk_buff *next_free;
++	};
++	/*--- members common to fkbuff: end here ---*/
++
++	__u32			recycle_flags;  /* 3 bytes unused */
++#if defined(CONFIG_NF_CONNTRACK) || defined(CONFIG_NF_CONNTRACK_MODULE)
++	struct nf_conntrack	*nfct;          /* CONFIG_NETFILTER */
++	struct sk_buff		*nfct_reasm;    /* CONFIG_NF_CONNTRACK MODULE*/
++#endif
++	union {
++		__u32		vtag_word;
++   		struct 		{ __u16 vtag, vtag_save; };
++	};
++	union {             /* CONFIG_NET_SCHED, CONFIG_NET_CLS_ACT */
++		__u32		tc_word;	/* traffic control index and verdict */
++		struct 		{ __u16 tc_index, tc_verd; };
++	};
+ 
++#endif // defined(CONFIG_BCM63XX)BRCM change End
+ 	struct sock		*sk;
+ 	ktime_t			tstamp;
+-	struct net_device	*dev;
+ 
+ 	union {
+ 		struct  dst_entry	*dst;
+@@ -340,8 +398,7 @@ struct sk_buff {
+ 	void			*cb_next;
+ #endif
+ 
+-	unsigned int		len,
+-				data_len;
++	unsigned int		data_len;
+ 	__u16			mac_len,
+ 				hdr_len;
+ 	union {
+@@ -351,7 +408,6 @@ struct sk_buff {
+ 			__u16	csum_offset;
+ 		};
+ 	};
+-	__u32			priority;
+ 	__u8			local_df:1,
+ 				cloned:1,
+ 				ip_summed:2,
+@@ -364,26 +420,32 @@ struct sk_buff {
+ 				nf_trace:1;
+ 	__be16			protocol;
+ 
+-	void			(*destructor)(struct sk_buff *skb);
+-#if defined(CONFIG_NF_CONNTRACK) || defined(CONFIG_NF_CONNTRACK_MODULE)
+-	struct nf_conntrack	*nfct;
+-	struct sk_buff		*nfct_reasm;
+-#endif
+ #if defined(CONFIG_IMQ) || defined(CONFIG_IMQ_MODULE)
+ 	struct nf_queue_entry	*nf_queue_entry;
+ #endif
++#if defined(CONFIG_BCM63XX)
++	char			*extif;
++#define BCM_SNOOPING_BUFSZ     64
++#endif /* CONFIG_BCM63XX */
++
+ #ifdef CONFIG_BRIDGE_NETFILTER
+ 	struct nf_bridge_info	*nf_bridge;
+ #endif
+ 
+ 	int			iif;
+ 	__u16			queue_mapping;
++#if defined(CONFIG_BCM63XX)
++	// TBD: see if these can be removed
++	//__u16			tc_index;	/* traffic control index */
++	//__u16			tc_verd;	/* traffic control verdict */
++#else
+ #ifdef CONFIG_NET_SCHED
+ 	__u16			tc_index;	/* traffic control index */
+ #ifdef CONFIG_NET_CLS_ACT
+ 	__u16			tc_verd;	/* traffic control verdict */
+ #endif
+ #endif
++#endif /* else CONFIG_BCM63XX */
+ #ifdef CONFIG_IPV6_NDISC_NODETYPE
+ 	__u8			ndisc_nodetype:2;
+ #endif
+@@ -403,8 +465,6 @@ struct sk_buff {
+ 	__u32			secmark;
+ #endif
+ 
+-	__u32			mark;
+-
+ 	__u16			vlan_tci;
+ 
+ 	sk_buff_data_t		transport_header;
+@@ -413,8 +473,7 @@ struct sk_buff {
+ 	/* These elements must be at the end, see alloc_skb() for details.  */
+ 	sk_buff_data_t		tail;
+ 	sk_buff_data_t		end;
+-	unsigned char		*head,
+-				*data;
++	unsigned char		*head;
+ 	unsigned int		truesize;
+ 	atomic_t		users;
+ };
+@@ -540,6 +599,63 @@ static inline union skb_shared_tx *skb_t
+ 	return &skb_shinfo(skb)->tx_flags;
+ }
+ 
++
++#if defined(CONFIG_BCM63XX)
++/**
++ *	skb_headerinit	-	initialize a socket buffer header
++ *  @headroom: reserved headroom size
++ *	@size: size to allocate
++ *	@skb: skb allocated by caller
++ *	@data: data buffer allocated by caller
++ *	@recycle_hook: callback function to free data buffer and skb
++ *	@recycle_context: context value passed to recycle_hook, param1
++ *  @blog: to pass a blog for skb logging
++ *
++ *	Initializes the socket buffer and assigns the data buffer to it.
++ *
++ */
++static inline void skb_headerinit(unsigned headroom, unsigned size,
++	struct sk_buff *skb, unsigned char *data,
++	RecycleFuncP recycle_hook, unsigned recycle_context,
++	Blog_t * blog_p)
++{
++	memset(skb, 0, offsetof(struct sk_buff, truesize));
++
++	skb->truesize = size + sizeof(struct sk_buff);
++	atomic_set(&skb->users, 1);
++	skb->head = data - headroom;
++	skb->data = data;
++	skb->tail = data + size;
++	skb->end  = (unsigned char *) (((unsigned)data + size + 0x0f) & ~0x0f);
++	skb->len = size;
++
++#if defined(CONFIG_BLOG)
++	skb->blog_p = blog_p;
++	if ( blog_p ) blog_p->skb_p = skb;
++#endif
++	skb->recycle_hook = recycle_hook;
++	skb->recycle_context = recycle_context;
++	skb->recycle_flags = SKB_RECYCLE | SKB_DATA_RECYCLE;
++
++	atomic_set(&(skb_shinfo(skb)->dataref), 1);
++	skb_shinfo(skb)->nr_frags = 0;
++	skb_shinfo(skb)->gso_size = 0;
++	skb_shinfo(skb)->gso_segs = 0;
++	skb_shinfo(skb)->gso_type = 0;
++	skb_shinfo(skb)->ip6_frag_id = 0;	
++	skb_shinfo(skb)->frag_list = NULL;
++}
++
++static inline void skb_hdrinit(unsigned headroom, unsigned size,
++	struct sk_buff *skb, unsigned char * data,
++	RecycleFuncP recycle_hook, unsigned recycle_context)
++{
++	skb_headerinit(headroom, size, skb, data, recycle_hook, recycle_context,
++		(Blog_t*)NULL);	/* No associated Blog object */
++}
++
++#endif  /* defined(CONFIG_BCM63XX) */
++
+ /**
+  *	skb_queue_empty - check if a queue is empty
+  *	@list: queue head
+--- a/net/core/skbuff.c
++++ b/net/core/skbuff.c
+@@ -69,6 +69,13 @@
+ 
+ #include "kmap_skb.h"
+ 
++#if defined(CONFIG_BCM63XX)
++#include <linux/nbuff.h>
++#include <linux/blog.h>
++#endif
++#include <linux/version.h>
++
++
+ static struct kmem_cache *skbuff_head_cache __read_mostly;
+ static struct kmem_cache *skbuff_fclone_cache __read_mostly;
+ #if defined(CONFIG_IMQ) || defined(CONFIG_IMQ_MODULE)
+@@ -417,7 +424,18 @@ static void skb_release_data(struct sk_b
+ 
+ 		if (skb_shinfo(skb)->frag_list)
+ 			skb_drop_fraglist(skb);
+-
++		
++#if defined(CONFIG_BCM63XX)
++		/*
++		 * If the data buffer came from a preallocated pool, recycle it.
++		 * Recycling may only be performed when no references exist to it.
++	 	 */
++		if (skb->recycle_hook && (skb->recycle_flags & SKB_DATA_RECYCLE)) {
++			(*skb->recycle_hook)(skb, skb->recycle_context, SKB_DATA_RECYCLE);
++			skb->recycle_flags &= SKB_DATA_NO_RECYCLE;	/* mask out */
++		}
++		else
++#endif
+ 		kfree(skb->head);
+ 	}
+ }
+@@ -430,10 +448,22 @@ static void kfree_skbmem(struct sk_buff
+ 	struct sk_buff *other;
+ 	atomic_t *fclone_ref;
+ 
+-	switch (skb->fclone) {
+-	case SKB_FCLONE_UNAVAILABLE:
+-		kmem_cache_free(skbuff_head_cache, skb);
+-		break;
++#if defined(CONFIG_BCM63XX)
++#if defined(CONFIG_BLOG)
++	blog_free(skb);		/* CONFIG_BLOG: Frees associated blog object */
++#endif
++
++	/* If the skb came from a preallocated pool, pass it to recycler hook */
++	if (skb->recycle_hook && (skb->recycle_flags & SKB_RECYCLE)) {
++		(*skb->recycle_hook)(skb, skb->recycle_context, SKB_RECYCLE);
++		// Race condition - the ownership of the sk_buff has already transferred, some driver could be using it. Commenting out the line below.
++		// skb->recycle_flags &= SKB_NO_RECYCLE;	/* mask out. (redundant) */ 
++	} else {
++#endif //defined(CONFIG_BCM63XX)
++		switch (skb->fclone) {
++		case SKB_FCLONE_UNAVAILABLE:
++			kmem_cache_free(skbuff_head_cache, skb);
++			break;
+ 
+ 	case SKB_FCLONE_ORIG:
+ 		fclone_ref = (atomic_t *) (skb + 2);
+@@ -453,7 +483,10 @@ static void kfree_skbmem(struct sk_buff
+ 		if (atomic_dec_and_test(fclone_ref))
+ 			kmem_cache_free(skbuff_fclone_cache, other);
+ 		break;
++		}
++#if defined(CONFIG_BCM63XX)
+ 	}
++#endif	
+ }
+ 
+ static void skb_release_head_state(struct sk_buff *skb)
+@@ -483,12 +516,16 @@ static void skb_release_head_state(struc
+ 	nf_bridge_put(skb->nf_bridge);
+ #endif
+ /* XXX: IS this still necessary? - JHS */
++#if defined(CONFIG_BCM63XX)
++	skb->tc_word = 0;
++#else
+ #ifdef CONFIG_NET_SCHED
+ 	skb->tc_index = 0;
+ #ifdef CONFIG_NET_CLS_ACT
+ 	skb->tc_verd = 0;
+ #endif
+ #endif
++#endif	/* else !defined(CONFIG_BCM63XX) */
+ }
+ 
+ /* Free everything but the sk_buff shell. */
+@@ -534,6 +571,272 @@ void kfree_skb(struct sk_buff *skb)
+ }
+ EXPORT_SYMBOL(kfree_skb);
+ 
++#if defined(CONFIG_BCM63XX)
++/*
++ * Translate a fkb to a skb, by allocating a skb from the skbuff_head_cache.
++ * PS. skb->dev is not set during initialization.
++ *
++ * Caller verifies whether the fkb is unshared:
++ *  if fkb_p==NULL||IS_FKB_CLONE(fkb_p)||fkb_p->users>1 and return NULL skb.
++ */
++struct sk_buff * skb_xlate(struct fkbuff * fkb_p)
++{
++	struct sk_buff * skb_p;
++	int datalen;
++
++	/* Optimization: use preallocated pool of skb with SKB_POOL_RECYCLE flag */
++	skb_p = kmem_cache_alloc(skbuff_head_cache, GFP_ATOMIC);
++	if ( !skb_p )
++		return skb_p;
++	skb_p->fclone = SKB_FCLONE_UNAVAILABLE;
++
++	memset(skb_p, 0, offsetof(struct sk_buff, truesize));
++
++	datalen = SKB_DATA_ALIGN(fkb_p->len + FKB_XLATE_SKB_TAILROOM);
++
++	skb_p->truesize = datalen + sizeof(struct sk_buff);
++
++	atomic_set(&skb_p->users, 1);
++	skb_p->head = (unsigned char *)(fkb_p + 1 );
++	skb_p->data = fkb_p->data;
++	skb_p->tail = fkb_p->data + fkb_p->len;
++	skb_p->end  = skb_p->data + datalen;
++
++	skb_p->len  = fkb_p->len;
++
++#if defined(CONFIG_BLOG)
++    if ( _IS_BPTR_(fkb_p->blog_p) ) /* should not happen */
++    {
++        skb_p->blog_p = fkb_p->blog_p;
++        fkb_p->blog_p->skb_p = skb_p;
++    }
++#endif
++
++#define F2S(x) skb_p->x = fkb_p->x
++
++	F2S(mark);
++	F2S(priority);
++	F2S(recycle_hook);
++	F2S(recycle_context);
++	skb_p->recycle_flags = SKB_DATA_RECYCLE;
++	fkb_dec_ref(fkb_p);	/* redundant: fkb_p must not be used henceforth */
++
++	atomic_set(&(skb_shinfo(skb_p)->dataref), 1);
++	skb_shinfo(skb_p)->nr_frags = 0;
++	skb_shinfo(skb_p)->gso_size = 0;
++	skb_shinfo(skb_p)->gso_segs = 0;
++	skb_shinfo(skb_p)->gso_type = 0;
++	skb_shinfo(skb_p)->ip6_frag_id = 0;
++	skb_shinfo(skb_p)->frag_list = NULL;
++
++	return skb_p;
++}
++
++EXPORT_SYMBOL(skb_xlate);
++
++/*
++ *This fucntion fragments the skb into multiple skbs and xmits them
++ *this fucntion is a substitue for ip_fragment when Ip stack is skipped
++ *for packet acceleartion(fcache,CMF)
++ *
++ *Currently only IPv4 is supported
++ *
++ */
++
++void skb_frag_xmit(struct sk_buff *origskb, struct net_device *txdev,
++                     uint32_t is_pppoe, uint32_t minMtu,  void *ipp)
++{
++
++#if 0
++#define DEBUG_SKBFRAG(args) printk args
++#else
++#define DEBUG_SKBFRAG(args) 
++#endif
++
++#define IP_DF		0x4000		/* Flag: "Don't Fragment"	*/
++#define IP_MF		0x2000		/* Flag: "More Fragments"	*/
++#define IP_OFFSET	0x1FFF		/* "Fragment Offset" part	*/
++
++	struct iphdr *iph;
++	int datapos, offset;
++	unsigned int max_dlen, hlen, hdrslen, left, len;
++	uint16_t not_last_frag;
++	struct sk_buff *fraglisthead;
++	struct sk_buff *fraglisttail;
++	struct sk_buff *skb2;
++
++	DEBUG_SKBFRAG(("skb_frag_xmit:enter origskb=%p,netdev=%p,is_pppoe=%d,\
++				minMtu=%d ipp=%p\n",origskb, txdev, is_pppoe, minMtu, ipp));
++
++	if(likely(origskb->len <= minMtu))
++	{
++		/* xmit packet */
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
++		txdev->netdev_ops->ndo_start_xmit(
++#else
++		txdev->hard_start_xmit(
++#endif
++				(void*)CAST_REAL_TO_VIRT_PNBUFF(origskb,SKBUFF_PTR),
++				txdev);
++		return ;
++	}
++
++	fraglisthead = NULL;
++	fraglisttail = NULL;
++	skb2 = NULL;
++
++	DEBUG_SKBFRAG(("skb_frag_xmit: checking for DF\n"));
++	iph = (struct iphdr *)ipp;
++	/* DROP the packet if DF flag is set */
++	if (unlikely((iph->frag_off & htons(IP_DF)) && !(origskb->local_df))) {
++		/*----TODO: update error stats, send icmp error message ?--- */
++		kfree_skb(origskb);
++		return ;
++	}
++
++	hlen = iph->ihl * 4;
++
++	DEBUG_SKBFRAG(("skb_frag_xmit: calculating hdrs len \n"));
++	/* calculate space for data,(ip payload) */
++	hdrslen = ((int)ipp - (int)(origskb->data)) + hlen; 
++
++	left = origskb->len - hdrslen;	/* Size of ip payload */
++	datapos = hdrslen;/* Where to start from */
++	max_dlen =  minMtu - hdrslen;	/* ip payload per frame */
++
++	DEBUG_SKBFRAG(("skb_frag_xmit: computed hdrslen=%d, left=%d\n",hdrslen, left));
++
++	/* frag_offset is represented in 8 byte blocks */
++	offset = (ntohs(iph->frag_off) & IP_OFFSET) << 3;
++	not_last_frag = iph->frag_off & htons(IP_MF);
++
++	/* copy the excess data (>MTU size) from orig fkb to new fkb's */
++	fraglisthead = origskb;
++
++	while(left > 0){
++		DEBUG_SKBFRAG(("skb_frag_xmit: making fragments\n"));
++		len = left;
++		/* IF: it doesn't fit, use 'max_dlen' - the data space left */
++		if (len > max_dlen)
++			len = max_dlen;
++		/* IF: we are not sending upto and including the packet end
++			then align the next start on an eight byte boundary */
++		if (len < left)	{
++			len &= ~7;
++		}
++
++		if(datapos == hdrslen){
++			/*reuse the orig skb for 1st fragment */
++			skb2 = origskb;
++			DEBUG_SKBFRAG(("skb_frag_xmit: reusing skb\n"));
++			skb2->next = NULL;
++			fraglisttail = skb2;
++			skb2->len = hdrslen+len;
++			skb2->tail = skb2->data + (hdrslen+len);
++		}else {
++
++			DEBUG_SKBFRAG(("skb_frag_xmit: genrating new skb\n"));
++			/* Allocate a new skb */
++			if ((skb2 = alloc_skb(len+hdrslen, GFP_ATOMIC)) == NULL) {
++				printk(KERN_INFO "no memory for new fragment!\n");
++				goto fail;
++			}
++
++			/* copy skb metadata */       
++			skb2->mark = origskb->mark;
++			skb2->priority = origskb->priority;
++			skb2->dev = origskb->dev;
++
++			dst_release(skb2->dst);
++			skb2->dst = dst_clone(origskb->dst);
++#ifdef CONFIG_NET_SCHED
++			skb2->tc_index = origskb->tc_index;
++#endif
++
++			skb_put(skb2, len + hdrslen);
++
++			DEBUG_SKBFRAG(("skb_frag_xmit: copying headerto new skb\n"));
++
++			/* copy the l2 header &l3 header to new fkb from orig fkb */
++			memcpy(skb2->data, origskb->data, hdrslen);
++
++			DEBUG_SKBFRAG(("skb_frag_xmit: copying data to new skb\n"));
++			/*
++			 *	Copy a block of the IP datagram.
++			 */
++			memcpy(skb2->data+hdrslen, origskb->data+datapos, len);
++
++			skb2->next = NULL;
++			fraglisttail->next = skb2;
++			fraglisttail = skb2;
++		}
++		/*
++		 *	Fill in the new header fields.
++		 */
++		DEBUG_SKBFRAG(("skb_frag_xmit: adjusting ipheader\n"));
++		iph = (struct iphdr *)(skb2->data + (hdrslen- hlen));
++		iph->frag_off = htons((offset >> 3));
++		iph->tot_len = htons(len + hlen);
++
++		left -= len;
++		datapos += len;
++		offset += len;
++
++		/*fix pppoelen */ 
++		if (is_pppoe)
++			*((uint16_t*)iph - 2) = iph->tot_len + sizeof(uint16_t);
++
++		/*
++		 *	If we are fragmenting a fragment that's not the
++		 *	 last fragment then keep MF on each fragment 
++		 */
++		if (left > 0 || not_last_frag)
++			iph->frag_off |= htons(IP_MF);
++		//else
++		//iph->frag_off &= ~htons(IP_MF);/*make sure MF is cleared */
++
++
++		DEBUG_SKBFRAG(("skb_frag_xmit: computing ipcsum\n"));
++		/* fix ip checksum */
++		iph->check = 0;
++		/*TODO replace with our own csum_calc */
++		iph->check = ip_fast_csum((unsigned char *)iph, iph->ihl);
++
++
++		DEBUG_SKBFRAG(("skb_frag_xmit: loop done\n"));
++	}
++
++	/* xmit skb's */
++	while(fraglisthead){
++		DEBUG_SKBFRAG(("skb_frag_xmit: sending skb fragment \n"));
++		skb2 = fraglisthead;
++		fraglisthead = fraglisthead->next;
++#if LINUX_VERSION_CODE >= KERNEL_VERSION(2,6,30)
++		txdev->netdev_ops->ndo_start_xmit(
++#else
++		txdev->hard_start_xmit(
++#endif
++				(void*)CAST_REAL_TO_VIRT_PNBUFF(skb2,SKBUFF_PTR),
++				txdev);
++	}
++	return ;
++
++fail:
++	DEBUG_SKBFRAG(("skb_frag_xmit: ENTERED FAIL CASE\n"));
++	while(fraglisthead){
++		skb2 = fraglisthead;
++		fraglisthead = fraglisthead->next;
++		kfree_skb(skb2);
++	}
++	return ;
++
++}
++EXPORT_SYMBOL(skb_frag_xmit);
++
++#endif  /* defined(CONFIG_BCM63XX) */
++
++
++
+ /**
+  *	consume_skb - free an skbuff
+  *	@skb: buffer to free
+@@ -632,12 +935,16 @@ static void __copy_skb_header(struct sk_
+     defined(CONFIG_NETFILTER_XT_TARGET_TRACE_MODULE)
+ 	new->nf_trace		= old->nf_trace;
+ #endif
++#if defined(CONFIG_BCM63XX)
++	new->tc_word = old->tc_word;
++#else
+ #ifdef CONFIG_NET_SCHED
+ 	new->tc_index		= old->tc_index;
+ #ifdef CONFIG_NET_CLS_ACT
+ 	new->tc_verd		= old->tc_verd;
+ #endif
+-#endif
++#endif //CONFIG_NET_CLS_ACT
++#endif //CONFIG_BCM63XX
+ 	new->vlan_tci		= old->vlan_tci;
+ 
+ 	skb_copy_secmark(new, old);
+@@ -664,6 +971,18 @@ static struct sk_buff *__skb_clone(struc
+ 	C(head);
+ 	C(data);
+ 	C(truesize);
++
++#if defined(CONFIG_BCM63XX)
++#if defined CONFIG_BLOG
++	blog_xfer(n, skb);	/* CONFIG_BLOG: transfers blog ownership */
++#endif
++	C(recycle_hook);
++	C(recycle_context);
++	n->recycle_flags = skb->recycle_flags & SKB_NO_RECYCLE;
++	C(vtag_word);
++#endif
++
++
+ #if defined(CONFIG_MAC80211) || defined(CONFIG_MAC80211_MODULE)
+ 	C(do_not_encrypt);
+ 	C(requeue);
+@@ -689,8 +1008,18 @@ static struct sk_buff *__skb_clone(struc
+  */
+ struct sk_buff *skb_morph(struct sk_buff *dst, struct sk_buff *src)
+ {
++	struct sk_buff *skb;
++	__u32	recycle_flags; 
++
+ 	skb_release_all(dst);
+-	return __skb_clone(dst, src);
++
++	/* Need to retain the recycle flags of dst to free it into 
++	 * proper pool(skb and dst are same in current code).    
++	 */
++	recycle_flags = dst->recycle_flags & SKB_RECYCLE;
++	skb = __skb_clone(dst, src);
++	dst->recycle_flags |= recycle_flags;
++	return skb;
+ }
+ EXPORT_SYMBOL_GPL(skb_morph);
+ 
+@@ -914,6 +1243,11 @@ int pskb_expand_head(struct sk_buff *skb
+ 
+ 	off = (data + nhead) - skb->head;
+ 
++#if defined(CONFIG_BCM63XX)
++	/* The data buffer of this skb is not pre-allocated any more
++	 * even the skb itself is pre-allocated */
++	skb->recycle_flags &= SKB_DATA_NO_RECYCLE;
++#endif
+ 	skb->head     = data;
+ 	skb->data    += off;
+ #ifdef NET_SKBUFF_DATA_USES_OFFSET

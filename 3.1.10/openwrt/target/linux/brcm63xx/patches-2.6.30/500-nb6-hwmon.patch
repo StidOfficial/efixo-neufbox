@@ -1,0 +1,29 @@
+--- a/drivers/hwmon/Kconfig
++++ b/drivers/hwmon/Kconfig
+@@ -652,6 +652,16 @@ config SENSORS_MAX6650
+ 	  This driver can also be built as a module.  If so, the module
+ 	  will be called max6650.
+ 
++config SENSORS_NB6
++	tristate "NB6 MCU sensors/leds PWM"
++	depends on I2C &&  BOARD_NEUFBOX6
++	help
++	  If you say yes here you get support for the nb6 MCU support.
++	  PWM leds, Temperature + Alim monitoring
++
++	  This driver can also be built as a module.  If so, the module
++	  will be called nb6_hwmon.
++
+ config SENSORS_PC87360
+ 	tristate "National Semiconductor PC87360 family"
+ 	select HWMON_VID
+--- a/drivers/hwmon/Makefile
++++ b/drivers/hwmon/Makefile
+@@ -73,6 +73,7 @@ obj-$(CONFIG_SENSORS_LTC4245)	+= ltc4245
+ obj-$(CONFIG_SENSORS_MAX1111)	+= max1111.o
+ obj-$(CONFIG_SENSORS_MAX1619)	+= max1619.o
+ obj-$(CONFIG_SENSORS_MAX6650)	+= max6650.o
++obj-$(CONFIG_SENSORS_NB6)	+= nb6_hwmon.o
+ obj-$(CONFIG_SENSORS_PC87360)	+= pc87360.o
+ obj-$(CONFIG_SENSORS_PC87427)	+= pc87427.o
+ obj-$(CONFIG_SENSORS_PCF8591)	+= pcf8591.o

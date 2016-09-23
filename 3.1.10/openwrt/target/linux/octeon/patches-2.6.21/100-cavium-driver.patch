@@ -1,0 +1,846 @@
+--- a/drivers/crypto/Kconfig
++++ b/drivers/crypto/Kconfig
+@@ -51,7 +51,7 @@ config CRYPTO_DEV_PADLOCK_SHA
+ 	  If unsure say M. The compiled module will be
+ 	  called padlock-sha.ko
+ 
+-source "arch/s390/crypto/Kconfig"
++#source "arch/s390/crypto/Kconfig"
+ 
+ config CRYPTO_DEV_GEODE
+ 	tristate "Support for the Geode LX AES engine"
+--- a/drivers/hwmon/w83792d.c
++++ b/drivers/hwmon/w83792d.c
+@@ -194,6 +194,8 @@ static const u8 W83792D_REG_LEVELS[3][4]
+ 	  0xE2 }	/* (bit3-0) SmartFanII: Fan3 Level 3 */
+ };
+ 
++#define CONFIG_W83792D_WATCH_DOG	1
++
+ #define W83792D_REG_GPIO_EN		0x1A
+ #define W83792D_REG_CONFIG		0x40
+ #define W83792D_REG_VID_FANDIV		0x47
+@@ -296,8 +298,26 @@ struct w83792d_data {
+ 	u8 tolerance[3];	/* Fan1,2,3 tolerance(Smart Fan I/II) */
+ 	u8 sf2_points[3][4];	/* Smart FanII: Fan1,2,3 temperature points */
+ 	u8 sf2_levels[3][4];	/* Smart FanII: Fan1,2,3 duty cycle levels */
++
++#ifdef CONFIG_W83792D_WATCH_DOG
++        u8 watch_dog_ctrl[2];	/* watch_dog_ctrl[0]: 0: disalbe, 1: enable, 2: trigger*/
++				/* watch_dog_ctrl[1]: asr_timer */
++#endif
+ };
+ 
++#ifdef CONFIG_W83792D_WATCH_DOG
++
++#define W83792D_REG_LOCK_WATCH_DOG		0x01
++#define W83792D_REG_WATCH_DOG_ENABLE		0x02
++#define W83792D_REG_WATCH_DOG_STATUS		0x03
++#define W83792D_REG_WATCH_DOG_TIMER		0x04
++
++#define W83792D_DEFAULT_WATCH_DOG_TIMER		0x03	// at least 3min
++//#define W83792D_REG_CONFIG			0x40	// bit 4 Enable WDT
++
++#endif
++
++
+ static int w83792d_attach_adapter(struct i2c_adapter *adapter);
+ static int w83792d_detect(struct i2c_adapter *adapter, int address, int kind);
+ static int w83792d_detach_client(struct i2c_client *client);
+@@ -337,6 +357,104 @@ w83792d_write_value(struct i2c_client *c
+ 	return i2c_smbus_write_byte_data(client, reg, value);
+ }
+ 
++
++#ifdef CONFIG_W83792D_WATCH_DOG
++
++static ssize_t
++show_watch_dog(struct device *dev, struct device_attribute *attr,
++		char *buf)
++{
++	struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
++	int nr = sensor_attr->index-1;
++	struct w83792d_data *data = w83792d_update_device(dev);
++	return sprintf(buf, "%u\n", data->watch_dog_ctrl[nr]);
++}
++
++/* Note: we save and restore the fan minimum here, because its value is
++   determined in part by the fan divisor.  This follows the principle of
++   least suprise; the user doesn't expect the fan minimum to change just
++   because the divisor changed. */
++static ssize_t
++store_watch_dog(struct device *dev, struct device_attribute *attr,
++		const char *buf, size_t count)
++{
++	struct sensor_device_attribute *sensor_attr = to_sensor_dev_attr(attr);
++	int nr = sensor_attr->index - 1;
++	struct i2c_client *client = to_i2c_client(dev);
++	struct w83792d_data *data = i2c_get_clientdata(client);
++	/*u8 reg;*/
++	u8 ctrl_val, tmp_val;
++
++	/* Save data */
++	ctrl_val = simple_strtoul(buf, NULL, 10);
++	if ( nr == 0 )		// set watchdog control
++        {
++	   if ( ctrl_val == 0 )		// disable watchdog
++	   {
++	      printk("w83792d: Disable watch dog\n");
++	      w83792d_write_value(client, W83792D_REG_LOCK_WATCH_DOG, 0xcc);	// disable hardware watchdog timer
++	      w83792d_write_value(client, W83792D_REG_WATCH_DOG_TIMER, 0x00);	// clear watchdog timer
++
++	      tmp_val = w83792d_read_value(client, W83792D_REG_CONFIG);		// disable WDT
++	      tmp_val = tmp_val & (~0x10);
++	      w83792d_write_value(client, W83792D_REG_CONFIG, tmp_val);
++	   }
++	   else if ( ctrl_val == 1 )	// enable  watchdog
++	   {
++	      tmp_val = w83792d_read_value(client, W83792D_REG_CONFIG);		// enable WDT
++	      tmp_val = tmp_val | (0x10);
++	      w83792d_write_value(client, W83792D_REG_CONFIG, tmp_val);
++
++	      tmp_val = w83792d_read_value(client, W83792D_REG_CONFIG);
++
++	      tmp_val = w83792d_read_value(client, W83792D_REG_WATCH_DOG_STATUS);	// read to clear status
++
++	      w83792d_write_value(client, W83792D_REG_WATCH_DOG_TIMER, 0x00);	// clear watchdog timer
++
++	      if ( data->watch_dog_ctrl[1] < W83792D_DEFAULT_WATCH_DOG_TIMER )	// set watchdog timer
++		     data->watch_dog_ctrl[1] = W83792D_DEFAULT_WATCH_DOG_TIMER;
++	      w83792d_write_value(client, W83792D_REG_WATCH_DOG_TIMER, data->watch_dog_ctrl[1]);		  
++
++	      w83792d_write_value(client, W83792D_REG_LOCK_WATCH_DOG, 0x33);	// enable hardware watchdog timer
++	   }
++	   else if ( ctrl_val == 2 )	// trigger watchdog
++	   {
++	      if ( data->watch_dog_ctrl[1] < W83792D_DEFAULT_WATCH_DOG_TIMER )
++		 data->watch_dog_ctrl[1] = W83792D_DEFAULT_WATCH_DOG_TIMER;
++	      w83792d_write_value(client, W83792D_REG_WATCH_DOG_TIMER, data->watch_dog_ctrl[1]);		  	  
++	   }
++	       
++	   data->watch_dog_ctrl[nr]   = ctrl_val;	
++ 	}
++        else if ( nr == 1 )	// set watchdog timer
++        {
++	    if ( ctrl_val < W83792D_DEFAULT_WATCH_DOG_TIMER )
++	       ctrl_val = W83792D_DEFAULT_WATCH_DOG_TIMER;
++
++	    w83792d_write_value(client, W83792D_REG_WATCH_DOG_TIMER, ctrl_val);
++	    data->watch_dog_ctrl[nr]   = ctrl_val;
++ 	}
++        else	// no function
++        {
++ 	}
++
++	return count;
++}
++
++#define sys_watch_dog(offset) \
++static SENSOR_DEVICE_ATTR(watch_dog##offset, S_IRUGO | S_IWUSR, \
++				show_watch_dog, store_watch_dog, offset); \
++
++sys_watch_dog(1);
++sys_watch_dog(2);
++
++#define device_create_file_watch_dog(client, offset) \
++do { \
++device_create_file(&client->dev, &sensor_dev_attr_watch_dog##offset.dev_attr); \
++} while (0)
++
++#endif
++
+ /* following are the sysfs callback functions */
+ static ssize_t show_in(struct device *dev, struct device_attribute *attr,
+ 			char *buf)
+@@ -1402,6 +1520,11 @@ w83792d_detect(struct i2c_adapter *adapt
+ 		goto exit_remove_files;
+ 	}
+ 
++#ifdef CONFIG_W83792D_WATCH_DOG
++	device_create_file_watch_dog(new_client, 1);	/* watchdog control */
++	device_create_file_watch_dog(new_client, 2);	/* watchdog timer */
++#endif
++
+ 	return 0;
+ 
+ exit_remove_files:
+--- a/drivers/i2c/chips/ds1337.c
++++ b/drivers/i2c/chips/ds1337.c
+@@ -101,6 +101,9 @@ static int ds1337_get_datetime(struct i2
+ 		return -EINVAL;
+ 	}
+ 
++	memset(msg, 0, sizeof(msg));
++	memset(buf, 0, sizeof(buf));
++
+ 	msg[0].addr = client->addr;
+ 	msg[0].flags = 0;
+ 	msg[0].len = 1;
+@@ -174,6 +177,8 @@ static int ds1337_set_datetime(struct i2
+ 	}
+ 	buf[7] = BIN2BCD(val);
+ 
++	memset(msg, 0, sizeof(msg));
++
+ 	msg[0].addr = client->addr;
+ 	msg[0].flags = 0;
+ 	msg[0].len = sizeof(buf);
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -884,12 +884,12 @@ config SMC911X
+ 	help
+ 	  This is a driver for SMSC's LAN911x series of Ethernet chipsets
+ 	  including the new LAN9115, LAN9116, LAN9117, and LAN9118.
+-	  Say Y if you want it compiled into the kernel, 
++	  Say Y if you want it compiled into the kernel,
+ 	  and read the Ethernet-HOWTO, available from
+ 	  <http://www.linuxdoc.org/docs.html#howto>.
+ 
+-	  This driver is also available as a module. The module will be 
+-	  called smc911x.  If you want to compile it as a module, say M 
++	  This driver is also available as a module. The module will be
++	  called smc911x.  If you want to compile it as a module, say M
+ 	  here and read <file:Documentation/modules.txt>
+ 
+ config NET_VENDOR_RACAL
+@@ -1222,7 +1222,7 @@ config IBM_EMAC_RX_SKB_HEADROOM
+ 	  will always reserve at least 2 bytes to make IP header
+ 	  aligned, so usually there is no need to add any additional
+ 	  headroom.
+-	  
++
+ 	  If unsure, set to 0.
+ 
+ config IBM_EMAC_PHY_RX_CLK_FIX
+@@ -1230,10 +1230,10 @@ config IBM_EMAC_PHY_RX_CLK_FIX
+ 	depends on IBM_EMAC && (405EP || 440GX || 440EP || 440GR)
+ 	help
+ 	  Enable this if EMAC attached to a PHY which doesn't generate
+-	  RX clock if there is no link, if this is the case, you will 
++	  RX clock if there is no link, if this is the case, you will
+ 	  see "TX disable timeout" or "RX disable timeout" in the system
+ 	  log.
+-	  
++
+ 	  If unsure, say N.
+ 
+ config IBM_EMAC_DEBUG
+@@ -1250,7 +1250,7 @@ config IBM_EMAC_RGMII
+ 	bool
+ 	depends on IBM_EMAC && 440GX
+ 	default y
+-		
++
+ config IBM_EMAC_TAH
+ 	bool
+ 	depends on IBM_EMAC && 440GX
+@@ -1482,9 +1482,9 @@ config E100
+ 	select MII
+ 	---help---
+ 	  This driver supports Intel(R) PRO/100 family of adapters.
+-	  To verify that your adapter is supported, find the board ID number 
+-	  on the adapter. Look for a label that has a barcode and a number 
+-	  in the format 123456-001 (six digits hyphen three digits). 
++	  To verify that your adapter is supported, find the board ID number
++	  on the adapter. Look for a label that has a barcode and a number
++	  in the format 123456-001 (six digits hyphen three digits).
+ 
+ 	  Use the above information and the Adapter & Driver ID Guide at:
+ 
+@@ -1496,7 +1496,7 @@ config E100
+ 
+ 	  <http://appsr.intel.com/scripts-df/support_intel.asp>
+ 
+-	  More specific information on configuring the driver is in 
++	  More specific information on configuring the driver is in
+ 	  <file:Documentation/networking/e100.txt>.
+ 
+ 	  To compile this driver as a module, choose M here and read
+@@ -1946,7 +1946,7 @@ config E1000
+ 	depends on PCI
+ 	---help---
+ 	  This driver supports Intel(R) PRO/1000 gigabit ethernet family of
+-	  adapters.  For more information on how to identify your adapter, go 
++	  adapters.  For more information on how to identify your adapter, go
+ 	  to the Adapter & Driver ID Guide at:
+ 
+ 	  <http://support.intel.com/support/network/adapter/pro100/21397.htm>
+@@ -1956,7 +1956,7 @@ config E1000
+ 
+ 	  <http://support.intel.com>
+ 
+-	  More specific information on configuring the driver is in 
++	  More specific information on configuring the driver is in
+ 	  <file:Documentation/networking/e1000.txt>.
+ 
+ 	  To compile this driver as a module, choose M here and read
+@@ -2100,7 +2100,7 @@ config SKGE
+ 	  and related Gigabit Ethernet adapters. It is a new smaller driver
+ 	  with better performance and more complete ethtool support.
+ 
+-	  It does not support the link failover and network management 
++	  It does not support the link failover and network management
+ 	  features that "portable" vendor supplied sk98lin driver does.
+ 
+ 	  This driver supports adapters based on the original Yukon chipset:
+@@ -2201,16 +2201,16 @@ config SK98LIN
+ 	    - SK-9871 V2.0 Gigabit Ethernet 1000Base-ZX Adapter
+ 	    - SK-9872 Gigabit Ethernet Server Adapter (SK-NET GE-ZX dual link)
+ 	    - SMC EZ Card 1000 (SMC9452TXV.2)
+-	  
++
+ 	  The adapters support Jumbo Frames.
+ 	  The dual link adapters support link-failover and dual port features.
+-	  Both Marvell Yukon and SysKonnect SK-98xx/SK-95xx adapters support 
+-	  the scatter-gather functionality with sendfile(). Please refer to 
++	  Both Marvell Yukon and SysKonnect SK-98xx/SK-95xx adapters support
++	  the scatter-gather functionality with sendfile(). Please refer to
+ 	  <file:Documentation/networking/sk98lin.txt> for more information about
+ 	  optional driver parameters.
+ 	  Questions concerning this driver may be addressed to:
+ 	      <linux@syskonnect.de>
+-	  
++
+ 	  If you want to compile this driver as a module ( = code which can be
+ 	  inserted in and removed from the running kernel whenever you want),
+ 	  say M here and read <file:Documentation/kbuild/modules.txt>. The module will
+@@ -2347,6 +2347,8 @@ config ATL1
+ 	  To compile this driver as a module, choose M here.  The module
+ 	  will be called atl1.
+ 
++source "drivers/net/cavium-ethernet/Kconfig"
++
+ endmenu
+ 
+ #
+@@ -2434,7 +2436,7 @@ config IXGB
+ 
+ 	  <http://support.intel.com>
+ 
+-	  More specific information on configuring the driver is in 
++	  More specific information on configuring the driver is in
+ 	  <file:Documentation/networking/ixgb.txt>.
+ 
+ 	  To compile this driver as a module, choose M here and read
+@@ -2462,8 +2464,8 @@ config S2IO
+ 	tristate "S2IO 10Gbe XFrame NIC"
+ 	depends on PCI
+ 	---help---
+-	  This driver supports the 10Gbe XFrame NIC of S2IO. 
+-	  More specific information on configuring the driver is in 
++	  This driver supports the 10Gbe XFrame NIC of S2IO.
++	  More specific information on configuring the driver is in
+ 	  <file:Documentation/networking/s2io.txt>.
+ 
+ config S2IO_NAPI
+@@ -2819,9 +2821,9 @@ config PPPOE
+ 	  Support for PPP over Ethernet.
+ 
+ 	  This driver requires the latest version of pppd from the CVS
+-	  repository at cvs.samba.org.  Alternatively, see the 
++	  repository at cvs.samba.org.  Alternatively, see the
+ 	  RoaringPenguin package (<http://www.roaringpenguin.com/pppoe>)
+-	  which contains instruction on how to use this driver (under 
++	  which contains instruction on how to use this driver (under
+ 	  the heading "Kernel mode PPPoE").
+ 
+ config PPPOATM
+--- a/drivers/net/sky2.c
++++ b/drivers/net/sky2.c
+@@ -3460,6 +3460,12 @@ static __devinit struct net_device *sky2
+ 	sky2->speed = -1;
+ 	sky2->advertising = sky2_supported_modes(hw);
+ 	sky2->rx_csum = 1;
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	/* The PCIe network card I'm using for testing happens to not support rx csum 
++	    correctly. I'm turning it off for all Octeons, but it really is a PCIe card
++	    problem */
++	sky2->rx_csum = 0;
++#endif
+ 	sky2->wol = wol;
+ 
+ 	spin_lock_init(&sky2->phy_lock);
+--- a/drivers/pci/Kconfig
++++ b/drivers/pci/Kconfig
+@@ -4,7 +4,7 @@
+ config PCI_MSI
+ 	bool "Message Signaled Interrupts (MSI and MSI-X)"
+ 	depends on PCI
+-	depends on (X86_LOCAL_APIC && X86_IO_APIC) || IA64 || SPARC64
++	depends on (X86_LOCAL_APIC && X86_IO_APIC) || IA64 || SPARC64 || MIPS
+ 	help
+ 	   This allows device drivers to enable MSI (Message Signaled
+ 	   Interrupts).  Message Signaled Interrupts enable a device to
+--- a/drivers/usb/core/driver.c
++++ b/drivers/usb/core/driver.c
+@@ -58,7 +58,7 @@ ssize_t usb_store_new_id(struct usb_dyni
+ 	dynid->id.match_flags = USB_DEVICE_ID_MATCH_DEVICE;
+ 
+ 	spin_lock(&dynids->lock);
+-	list_add_tail(&dynids->list, &dynid->node);
++	list_add_tail(&dynid->node, &dynids->list);
+ 	spin_unlock(&dynids->lock);
+ 
+ 	if (get_driver(driver)) {
+--- a/drivers/usb/core/message.c
++++ b/drivers/usb/core/message.c
+@@ -609,12 +609,12 @@ int usb_get_descriptor(struct usb_device
+ 	memset(buf,0,size);	// Make sure we parse really received data
+ 
+ 	for (i = 0; i < 3; ++i) {
+-		/* retry on length 0 or stall; some devices are flakey */
++		/* retry on length 0 or error; some devices are flakey */
+ 		result = usb_control_msg(dev, usb_rcvctrlpipe(dev, 0),
+ 				USB_REQ_GET_DESCRIPTOR, USB_DIR_IN,
+ 				(type << 8) + index, 0, buf, size,
+ 				USB_CTRL_GET_TIMEOUT);
+-		if (result == 0 || result == -EPIPE)
++		if (result <= 0 && result != -ETIMEDOUT)
+ 			continue;
+ 		if (result > 1 && ((u8 *)buf)[1] != type) {
+ 			result = -EPROTO;
+--- a/drivers/video/aty/radeon_base.c
++++ b/drivers/video/aty/radeon_base.c
+@@ -92,6 +92,7 @@
+ #include "../edid.h" // MOVE THAT TO include/video
+ #include "ati_ids.h"
+ #include "radeonfb.h"		    
++#include "rn50.h"
+ 
+ #define MAX_MAPPED_VRAM	(2048*2048*4)
+ #define MIN_MAPPED_VRAM	(1024*768*1)
+@@ -673,6 +674,19 @@ static void __devinit radeon_get_pllinfo
+ 		goto found;
+ 	}
+ 
++//RichardXY_Huang@asus.com
++#ifdef CONFIG_CPU_CAVIUM_OCTEON	//value is read from x86BIOS
++	rinfo->fp_bios_start	= 0x0106;
++
++	rinfo->pll.sclk         = 0x4e20;
++	rinfo->pll.mclk         = 0x4e20;
++	rinfo->pll.ref_clk      = 0x0a8c;
++	rinfo->pll.ref_div      = 0x003c;
++	rinfo->pll.ppll_min     = 0x2eec;
++	rinfo->pll.ppll_max     = 0x88b8;
++	goto found;
++#endif
++
+ 	/*
+ 	 * We didn't get PLL parameters from either OF or BIOS, we try to
+ 	 * probe them
+@@ -2032,6 +2046,9 @@ static void radeon_identify_vram(struct
+ 		case PCI_CHIP_RADEON_LZ:
+ 	       		rinfo->video_ram = 8192 * 1024;
+ 	       		break;
++		case PCI_CHIP_RN50:		// *** East Add
++			rinfo->video_ram = 16 * 1024 * 1024;
++			break;
+ 	       	default:
+ 	       		break;
+ 		}
+@@ -2044,6 +2061,8 @@ static void radeon_identify_vram(struct
+ 	if (rinfo->is_IGP || (rinfo->family >= CHIP_FAMILY_R300) ||
+ 	    (INREG(MEM_SDRAM_MODE_REG) & (1<<30)))
+ 		rinfo->vram_ddr = 1;
++	else if ( rinfo->pdev->device == PCI_CHIP_RN50 )
++		rinfo->vram_ddr = 1;
+ 	else
+ 		rinfo->vram_ddr = 0;
+ 
+@@ -2141,6 +2160,336 @@ static struct bin_attribute edid2_attr =
+ };
+ 
+ 
++/* init vga by the tables which get from VGA BIOS
++   RichardXY_Huang@asus.com.cn
++ */
++//#define ATI_BIOS_DEBUG
++#ifdef ATI_BIOS_DEBUG
++#define DEBUG_ATI(x...) printk(x)
++#else
++#define DEBUG_ATI(x...)
++#endif
++
++void mask_index_reg(struct radeonfb_info *rinfo, int index, unsigned int andmask, unsigned int ormask)
++{
++    unsigned int temp;
++    OUTREG(MM_INDEX, index);
++    temp = INREG(MM_DATA);
++    temp = (temp & andmask) | ormask;
++    OUTREG(MM_DATA, temp);
++}
++
++
++void mask_io_reg(struct radeonfb_info *rinfo, unsigned int index, unsigned int andmask, unsigned int ormask)
++{
++    unsigned int temp;
++    
++    temp = INREG(index);
++    temp&=andmask;
++    temp|=ormask;
++    OUTREG(index, temp);
++}
++
++
++
++void out_index_reg(struct radeonfb_info *rinfo, unsigned int index, unsigned int data)
++{
++    //printf("out_index_reg index=%x, data=%x\n", index, data);
++    OUTREG(MM_INDEX, index);
++    OUTREG(MM_DATA, data);
++}
++
++
++
++unsigned int in_index_reg(struct radeonfb_info *rinfo, unsigned int index)
++{
++    OUTREG(MM_INDEX, index);
++    return INREG(MM_DATA);
++}
++
++
++
++
++//Parameter "offset" is an offset of mask inside of dword
++void mask_pll_byte(struct radeonfb_info *rinfo, unsigned short index, unsigned char offset, unsigned char andmask, unsigned char ormask)
++{
++    unsigned int and_mask=(((unsigned int)andmask) << (offset * 8)) | ~((unsigned int)0xff << (offset*8));
++    unsigned int or_mask=(unsigned int)ormask << (offset * 8);
++        
++//    OUTREG(CLOCK_CNTL_INDEX, (index & 0x3f) | pllWR_EN);
++//    mask_io_reg(rinfo, CLOCK_CNTL_DATA, and_mask, or_mask);
++//    OUTREG( 0, io_base +  + CLOCK_CNTL_INDEX);
++//    OUTREG(CLOCK_CNTL_INDEX, 0);
++
++    OUTPLLP(index, or_mask, and_mask);
++    
++}
++
++
++
++
++#define pllWAIT_MC_BUSY_MASK    0x00010000            // byte 16 = 1
++#define pllWAIT_DLL_READY_MASK  0x00080000            // byte 19 = 0
++#define CLK_PWRMGT_CNTL24	0x01000000
++
++#define MEM_PWRUP_COMPLETE_A	0x01
++#define MEM_PWRUP_COMPLETE_B	0x02
++
++#define SET_ALL_SOURCES_TO_PCI  0x00001111
++#define mask_SDRAM_MODE		0xffff0000
++#define mask_b3MEM_RESET	0x6fffffff
++//Function gets parameters from a given ASIC Init table and does the following operations
++//depends on parameter's flag :
++//programming registers, masking registers, delaying, waiting for some registers status
++//or if command INFO is set it's printing on a screen what it's currently doing
++//*********************************************************************************
++
++int load_init_block(struct radeonfb_info *rinfo,  unsigned int *init_block, const char* comment)
++{
++    
++    unsigned int i;
++    unsigned int ormask, andmask;
++    unsigned short flag,index,command;
++    
++    if (init_block == NULL){
++	printk("\nLoadInitBlock : table does not exist!!!");
++	return (0);
++    }
++    
++    DEBUG_ATI("\n\n*************** %s ******************** ",comment);
++    DEBUG_ATI("\nTable revision : 0x%02x\n",*(init_block-1));
++    
++    while(*init_block){
++	//parsing a service word:
++	flag= (unsigned short)*init_block & 0xe000;  //taking highest 3 bits
++	index= (unsigned short)*init_block & 0x1fff; //the rest of the word can be index
++	command= (unsigned short)*init_block & 0xff; //scpecial command takes 1 byte
++	
++	init_block++;
++	
++	switch (flag){
++	    case 0x0000:  // writing data to Index (Memory) Register; 4 bytes
++		DEBUG_ATI("\nIndex register 0x%04x <- 0x%08x", index, *init_block);
++		out_index_reg(rinfo, index, *init_block);
++		init_block++;
++		break;
++	    case 0x2000:    // writing data to IO Register; 4 bytes
++		DEBUG_ATI("\nIO register 0x%02x <- 0x%08x", index, *init_block);
++		OUTREG(index, *init_block);
++		init_block++;
++		break;
++	    case 0x4000:  // masking Index (Memory) Register; both "and" and "or" masks are 4 bytes long
++		andmask= *init_block;
++		init_block++;
++		ormask = *init_block;
++		init_block++;
++		DEBUG_ATI("\nIndex register 0x%04x AND 0x%08x OR 0x%08x", index, andmask, ormask);
++		mask_index_reg(rinfo, index, andmask, ormask);
++		break;
++	    case 0x6000:    // masking IO registers; 8 bytes
++		andmask=*init_block;
++		init_block++;
++		ormask=*init_block;
++		init_block++;
++		DEBUG_ATI("\nIO register 0x%04x AND 0x%08x OR 0x%08x", index, andmask, ormask);
++		mask_io_reg(rinfo, index, andmask, ormask);
++		break;
++	    case 0x8000:    // Delay mks; 2 bytes
++		DEBUG_ATI("\nDelay %d mks",(unsigned short) *init_block);
++		mdelay((unsigned short)*init_block);
++		init_block++;
++		break;
++	    case 0xa000:  // Special command; 2 bytes
++		DEBUG_ATI("\nSpecial command [0x%02x] - ",command);
++		switch (command){
++		    case 0x0003:
++			DEBUG_ATI("wait CLK_PWRMGT_CNTL for WAIT_MC_BUSY_MASK bit set to 0");
++			for (i=0; i < *init_block; i++)
++			    if ((INPLL(pllCLK_PWRMGT_CNTL) & pllWAIT_MC_BUSY_MASK) == 0) break;
++			break;
++		    case 0x0008:
++			DEBUG_ATI("check MC_STATUS for MEM_PWRUP_COMPLETE");
++			for (i=0;i<*init_block;i++)
++			    if (((unsigned char)in_index_reg(rinfo, MC_STATUS) & 3) == MEM_PWRUP_COMPLETE_A+MEM_PWRUP_COMPLETE_B) break;
++			break;
++		}
++		init_block++;
++		break;
++	}
++    }
++    return (0);
++}
++
++
++//*********************************************************************************
++//Function gets parameters from a given PLL Init table and does the following operations
++//depends on parameter's flag :
++//wait (150mks,5ms or till some bit is set), programming registers, masking registers
++//or if command INFO is set it's printing on a screen what it's currently doing
++//*********************************************************************************
++/*Tables commands definitions*/
++#define PLL_WAIT                                        0x80
++#define PLL_PROGRAM_DWORD                       0x00
++#define PLL_MASK_BYTE                           0x40
++#define PLL_FLAG_BITS                           0xc0
++#define PLL_INDEX_BITS                          0x3f
++#define PLL_DELAY_150MKS                        1
++#define PLL_DELAY_5MS                           2
++#define WAIT_MC_BUSY_MASK                       3
++#define WAIT_DLL_READY_MASK                     4
++#define CHECK_SET_CLK_PWRMGT_CNTL24     5
++
++
++
++int load_pll_block(struct radeonfb_info *rinfo, unsigned int *init_block, const char* comment)
++{
++    unsigned int pwmgmtcntl;
++    unsigned char offset;
++    unsigned char andmask;
++    unsigned char ormask;
++    unsigned char index;
++    int i;
++    if (init_block == NULL){
++	printk("\nLoadPLLBlock : table does not exist!!!");
++	return (0);
++    }
++    
++    DEBUG_ATI("\n\n*************** %s ******************** ",comment);
++    while(*init_block){
++	index = (unsigned char)*init_block++;
++	switch (index & PLL_FLAG_BITS){
++	    case PLL_WAIT:                                          //This operation takes 1 byte from a table
++		switch (index & PLL_INDEX_BITS){
++		    case PLL_DELAY_150MKS:
++			DEBUG_ATI("\nDelay 150 mks");
++			mdelay(150);
++			break;
++		    case PLL_DELAY_5MS:
++			DEBUG_ATI("\nDelay 5 ms");
++			mdelay(5);
++			break;
++		    case WAIT_MC_BUSY_MASK:
++			DEBUG_ATI("\nwait CLK_PWRMGT_CNTL for WAIT_MC_BUSY_MASK bit set to 0");
++			for (i=0; i<10000; i++)
++			    if ((INPLL(pllCLK_PWRMGT_CNTL) & pllWAIT_MC_BUSY_MASK) == 0) break;
++			break;
++		    case WAIT_DLL_READY_MASK:
++			DEBUG_ATI("\nwait CLK_PWRMGT_CNTL for WAIT_DLL_READY_MASK bit set to 1");
++			for (i=0; i<10000; i++)
++			    if ((INPLL(pllCLK_PWRMGT_CNTL) & pllWAIT_DLL_READY_MASK) != 0) break;
++			break;
++		    case CHECK_SET_CLK_PWRMGT_CNTL24:
++			DEBUG_ATI("\ncheck PWRMGT_CNTL for bit 24 and clear it");
++			if (((pwmgmtcntl=INPLL(pllCLK_PWRMGT_CNTL)) & CLK_PWRMGT_CNTL24) != 0){
++			    OUTPLL(pllMCLK_CNTL, (INPLL(pllMCLK_CNTL) & 0xFFFF0000) | SET_ALL_SOURCES_TO_PCI);
++			    udelay(10000);
++			    OUTPLL(pllCLK_PWRMGT_CNTL,pwmgmtcntl & ~CLK_PWRMGT_CNTL24);
++			    udelay(10000);
++			}
++			break;
++		}
++		break;
++	    case PLL_MASK_BYTE:                     // This operation takes 3 bytes from a table
++		offset=(unsigned char)*init_block++;   // offset of byte inside a dword
++		andmask=(unsigned char)*init_block++;  // and mask
++		ormask=(unsigned char)*init_block++;   // or mask
++		DEBUG_ATI("\nPLL byte 0x%04x, bits %d-%d AND 0x%02x OR 0x%02x",index,offset*8,offset*8+8,andmask,ormask);
++		mask_pll_byte(rinfo, index, offset, andmask, ormask);
++		break;
++	    case PLL_PROGRAM_DWORD:         // This operation takes 4 bytes from a table
++		DEBUG_ATI("\nPLL DWORD 0x%04x <- 0x%08x", index, *init_block );
++		OUTPLL(index,*init_block);
++		init_block++;
++		break;
++	}
++	
++
++    }
++
++    return (1);
++}
++
++
++
++//*********************************************************************************
++//Function gets parameters from a given Memory reset table, runs ASIC init tables 3 and 4
++//and does the following operations depends on parameter's flag :
++//wait for MEM_PWRUP_COMPLETE and masking registers
++//or if command INFO is set it's printing on a screen what it's currently doing
++//*********************************************************************************
++
++int reset_sdram(struct radeonfb_info *rinfo, unsigned short *reset_block, const char * comment)
++{
++    
++    int i;
++    unsigned char index;
++    
++    if (reset_block == NULL){
++	printk("\nReset_SDRAM : table does not exist!!!");
++	return (0);
++    }
++    
++    DEBUG_ATI("\n\n*************** %s ******************** ",comment);
++    while(*reset_block != 0xff){
++	index=(unsigned char)*reset_block++;
++	if (index == 0x0f){
++	    DEBUG_ATI("\ncheck MC_STATUS for MEM_PWRUP_COMPLETE");
++	    for (i=0;i<20000;i++)
++		if (((unsigned char)in_index_reg(rinfo, MC_STATUS) & 3) == MEM_PWRUP_COMPLETE_A+MEM_PWRUP_COMPLETE_B) break;
++	    
++	}else{
++	    DEBUG_ATI("\nIndex register 0x%04x AND 0x%08x OR 0x%08x",MEM_SDRAM_MODE_REG, mask_SDRAM_MODE, *(unsigned short*)reset_block);
++	    mask_index_reg(rinfo, MEM_SDRAM_MODE_REG, mask_SDRAM_MODE, *reset_block);
++	    reset_block++;
++	    DEBUG_ATI("\nIndex register 0x%04x AND 0x%08x OR 0x%08x",MEM_SDRAM_MODE_REG, mask_b3MEM_RESET, index << 24);
++	    mask_index_reg(rinfo, MEM_SDRAM_MODE_REG, mask_b3MEM_RESET, (unsigned int)index << 24);
++	}
++    }
++    
++    return (1);
++}
++
++
++
++
++/*Constants to validate table pointer*/
++#define MAX_REVISION			0x10
++#define MIN_TABLE_POINTER_ALLOWED	0x60
++#define SINGLE_TABLE_REVISION		0x09
++
++
++void ati_bios_init(struct radeonfb_info *rinfo)
++{
++    /*********************************************/
++    /*      unsigned int rage_regs_1_table[]        */
++    /*      unsigned int pll_init_table[]           */
++    /*      unsigned int rage_regs_2_table[]        */
++    /*      unsigned int rage_regs_4_table[]        */
++    /*      unsigned short mem_reset_table[]         */
++    /*      unsigned int rage_regs_3_table[]        */
++    /*      unsigned int dyn_clock_table[]          */
++    /*      unsigned int umod640pll[]               */
++    /*      unsigned int umod640reg[]               */
++    /*********************************************/
++//#include "rn50.h"
++    int ret;
++    if (rage_regs_1_table !=NULL) ret = load_init_block(rinfo, rage_regs_1_table, "ASIC INIT TABLE #1");
++    
++    if (rom_hdr_rev < SINGLE_TABLE_REVISION){
++	// continue if older BIOS
++	if (pll_init_table !=NULL) ret &= load_pll_block(rinfo, pll_init_table, "PLL INIT TABLE");
++	if (rage_regs_2_table !=NULL) ret &= load_init_block(rinfo, rage_regs_2_table, "ASIC INIT TABLE #2");
++	if (rage_regs_4_table != NULL)  ret &= load_init_block(rinfo, rage_regs_4_table, "ASIC INIT TABLE #4");
++	if (mem_reset_table != NULL) ret &= reset_sdram(rinfo, mem_reset_table, "MEMORY RESET TABLE");
++	if (rage_regs_3_table != NULL)  ret &= load_init_block(rinfo, rage_regs_3_table, "ASIC INIT TABLE #3");
++	if (dyn_clock_table != NULL) ret &= load_pll_block(rinfo,dyn_clock_table, "DYNAMIC CLOCK ENABLE TABLE");
++    }
++    // Initialization of graphics mode
++    ret &= load_pll_block(rinfo, umod640pll, "Accelerator mode 640x480x16bpp PLL table");
++    ret &= load_init_block(rinfo, umod640reg, "Accelerator mode 640x480x16bpp PLL table");
++    
++}
++/********************************************************************/
+ static int __devinit radeonfb_pci_register (struct pci_dev *pdev,
+ 				  const struct pci_device_id *ent)
+ {
+@@ -2211,6 +2560,9 @@ static int __devinit radeonfb_pci_regist
+ 		goto err_release_pci2;
+ 	}
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON //RicahrdXY_Huang@asus.com.cn
++	ati_bios_init(rinfo);	
++#endif
+ 	rinfo->fb_local_base = INREG(MC_FB_LOCATION) << 16;
+ 
+ 	/*
+--- a/include/linux/sysctl.h
++++ b/include/linux/sysctl.h
+@@ -62,7 +62,7 @@ enum
+ 	CTL_KERN=1,		/* General kernel info and control */
+ 	CTL_VM=2,		/* VM management */
+ 	CTL_NET=3,		/* Networking */
+-	/* was CTL_PROC */
++	CTL_PROC=4, 		/* removal breaks strace(1) compilation */
+ 	CTL_FS=5,		/* Filesystems */
+ 	CTL_DEBUG=6,		/* Debugging */
+ 	CTL_DEV=7,		/* Devices */
+--- a/ipc/compat.c
++++ b/ipc/compat.c
+@@ -676,3 +676,9 @@ long compat_sys_semtimedop(int semid, st
+ 	}
+ 	return sys_semtimedop(semid, tsems, nsops, ts64);
+ }
++
++asmlinkage long compat_sys_lookup_dcookie(u32 cookie_high, u32 cookie_low, char __user * buf, size_t len)
++{
++    u64 cookie64 = ((u64)cookie_high<<32) | ((u64)cookie_low & 0xffffffff);
++    return sys_lookup_dcookie(cookie64, buf, len);
++}
+--- a/ipc/shm.c
++++ b/ipc/shm.c
+@@ -468,7 +468,11 @@ static inline unsigned long copy_shmid_t
+ 		out.shm_lpid	= in->shm_lpid;
+ 		out.shm_nattch	= in->shm_nattch;
+ 
+-		return copy_to_user(buf, &out, sizeof(out));
++		/* Use offsetof() instead of sizeof() since N32 userspace has a 
++		    different size including the unused fields. This just copies 
++		    what is used. The old method would corrupt data after the 
++		    structure */
++		return copy_to_user(buf, &out, offsetof(struct shmid_ds, shm_unused2));
+ 	    }
+ 	default:
+ 		return -EINVAL;
+--- a/mm/filemap.c
++++ b/mm/filemap.c
+@@ -2227,6 +2227,8 @@ __generic_file_aio_write_nolock(struct k
+ 		ocount += iv->iov_len;
+ 		if (unlikely((ssize_t)(ocount|iv->iov_len) < 0))
+ 			return -EINVAL;
++		if (iv->iov_len == 0)   /* Always allow zero length entries */
++			continue;
+ 		if (access_ok(VERIFY_READ, iv->iov_base, iv->iov_len))
+ 			continue;
+ 		if (seg == 0)

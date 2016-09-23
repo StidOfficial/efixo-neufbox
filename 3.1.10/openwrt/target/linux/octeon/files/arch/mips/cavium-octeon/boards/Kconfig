@@ -1,0 +1,8 @@
+
+menuconfig BOARD_NEUFBOX5
+	bool "neufbox5 board"
+	depends on CAVIUM_OCTEON_REFERENCE_BOARD
+	select GENERIC_GPIO
+	select GPIO_74HC164D
+	help
+	  Support for neufox5 SFR (FTTH)

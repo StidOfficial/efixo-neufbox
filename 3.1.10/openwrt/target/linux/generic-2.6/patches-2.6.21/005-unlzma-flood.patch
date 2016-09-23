@@ -1,0 +1,121 @@
+--- a/fs/squashfs/inode.c
++++ b/fs/squashfs/inode.c
+@@ -448,7 +448,7 @@ static struct squashfs_cache_entry *squa
+ out:
+ 	TRACE("Got %s %d, start block %lld, locked %d, error %d\n", i,
+ 		cache->name, entry->block, entry->locked, entry->error);
+-	if (entry->error)
++	if (entry->error && printk_ratelimit())
+ 		ERROR("Unable to read %s cache entry [%llx]\n", cache->name, block);
+ 	return entry;
+ }
+@@ -978,7 +978,8 @@ static int squashfs_read_inode(struct in
+ 	return 1;
+ 
+ failed_read:
+-	ERROR("Unable to read inode [%llx:%x]\n", block, offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read inode [%llx:%x]\n", block, offset);
+ 
+ failed_read1:
+ 	make_bad_inode(i);
+@@ -1353,7 +1354,8 @@ static int squashfs_symlink_readpage(str
+ 		bytes = squashfs_get_cached_block(inode->i_sb, NULL, block,
+ 				offset, PAGE_CACHE_SIZE, &block, &offset);
+ 		if (bytes == 0) {
+-			ERROR("Unable to read symbolic link [%llx:%x]\n", block, offset);
++			if (printk_ratelimit())
++				ERROR("Unable to read symbolic link [%llx:%x]\n", block, offset);
+ 			goto skip_read;
+ 		}
+ 	}
+@@ -1369,7 +1371,8 @@ static int squashfs_symlink_readpage(str
+ 	bytes = squashfs_get_cached_block(inode->i_sb, pageaddr, block, offset,
+ 		avail_bytes, &block, &offset);
+ 	if (bytes == 0)
+-		ERROR("Unable to read symbolic link [%llx:%x]\n", block, offset);
++		if (printk_ratelimit())
++			ERROR("Unable to read symbolic link [%llx:%x]\n", block, offset);
+ 
+ skip_read:
+ 	memset(pageaddr + bytes, 0, PAGE_CACHE_SIZE - bytes);
+@@ -1702,7 +1705,8 @@ static int squashfs_readpage(struct file
+ 				bsize, NULL, sblk->block_size);
+ 
+ 			if (bytes == 0) {
+-				ERROR("Unable to read page, block %llx, size %x\n", block, bsize);
++				if (printk_ratelimit())
++					ERROR("Unable to read page, block %llx, size %x\n", block, bsize);
+ 				mutex_unlock(&msblk->read_page_mutex);
+ 				goto error_out;
+ 			}
+@@ -1713,7 +1717,8 @@ static int squashfs_readpage(struct file
+ 					SQUASHFS_I(inode)->u.s1.fragment_size);
+ 
+ 		if (fragment->error) {
+-			ERROR("Unable to read page, block %llx, size %x\n",
++			if (printk_ratelimit())
++				ERROR("Unable to read page, block %llx, size %x\n",
+ 					SQUASHFS_I(inode)->u.s1.fragment_start_block,
+ 					(int) SQUASHFS_I(inode)->u.s1.fragment_size);
+ 			release_cached_fragment(msblk, fragment);
+@@ -1994,8 +1999,9 @@ finish:
+ 	return 0;
+ 
+ failed_read:
+-	ERROR("Unable to read directory block [%llx:%x]\n", next_block,
+-		next_offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read directory block [%llx:%x]\n", next_block,
++				next_offset);
+ 	kfree(dire);
+ 	return 0;
+ }
+@@ -2100,8 +2106,9 @@ exit_lookup:
+ 	return ERR_PTR(0);
+ 
+ failed_read:
+-	ERROR("Unable to read directory block [%llx:%x]\n", next_block,
+-		next_offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read directory block [%llx:%x]\n", next_block,
++		      next_offset);
+ 	goto exit_lookup;
+ }
+ 
+--- a/fs/squashfs/squashfs2_0.c
++++ b/fs/squashfs/squashfs2_0.c
+@@ -380,7 +380,8 @@ static int squashfs_read_inode_2(struct
+ 	return 1;
+ 
+ failed_read:
+-	ERROR("Unable to read inode [%x:%x]\n", block, offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read inode [%x:%x]\n", block, offset);
+ 
+ failed_read1:
+ 	return 0;
+@@ -599,8 +600,9 @@ finish:
+ 	return 0;
+ 
+ failed_read:
+-	ERROR("Unable to read directory block [%llx:%x]\n", next_block,
+-		next_offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read directory block [%llx:%x]\n", next_block,
++		      next_offset);
+ 	kfree(dire);
+ 	return 0;
+ }
+@@ -716,8 +718,9 @@ exit_loop:
+ 	return ERR_PTR(0);
+ 
+ failed_read:
+-	ERROR("Unable to read directory block [%llx:%x]\n", next_block,
+-		next_offset);
++	if (printk_ratelimit())
++		ERROR("Unable to read directory block [%llx:%x]\n", next_block,
++		      next_offset);
+ 	goto exit_loop;
+ }
+ 

@@ -1,0 +1,43 @@
+--- a/drivers/net/phy/rtl8367r.c
++++ b/drivers/net/phy/rtl8367r.c
+@@ -29,6 +29,8 @@
+ #include <linux/debugfs.h>
+ #endif
+ 
++#include <neufbox/events.h>
++
+ #define RTL8367R_DRIVER_DESC	"Realtek RTL8367R ethernet switch driver"
+ #define RTL8367R_DRIVER_VER	"0.2.1"
+ 
+@@ -528,6 +530,9 @@ static inline char const *phy_duplex(u32
+ 	return (reg & (1 << 12)) ? "Full" : "Half";
+ }
+ 
++#define EVENT_UP(P,S,D) ((event_id_port0_up + (2*(P)))|((S|(D))<<8))
++#define EVENT_DOWN(P)   (event_id_port0_down + (2*(P)))
++
+ static void rtl8367r_work(struct work_struct *work)
+ {
+ 	static u32 last[5];
+@@ -550,15 +555,19 @@ static void rtl8367r_work(struct work_st
+ 		if (reg) {
+ 			low_speed = false;
+ 			rtl8367r_read_phy_reg(rtl, i, 0x11, &reg);
+-			if (reg != last[i])
++			if (reg != last[i]) {
+ 				dev_info(rtl->parent, "port:%d link:%s "
+ 					 "speed:%d %s-duplex\n",
+ 					 i, "Up",
+ 					 phy_speed(reg), phy_duplex(reg));
++				event_enqueue(EVENT_UP(i, phy_speed(reg), (reg >> 13) & 0x01));
++			}
+ 		} else {
+-			if (reg != last[i])
++			if (reg != last[i]) {
+ 				dev_info(rtl->parent, "port:%d link:%s\n",
+ 					 i, "Down");
++				event_enqueue(EVENT_DOWN(i));
++			}
+ 		}
+ 
+ 		last[i] = reg;

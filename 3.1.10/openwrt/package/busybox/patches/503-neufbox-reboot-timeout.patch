@@ -1,0 +1,17 @@
+--- a/init/init.c
++++ b/init/init.c
+@@ -611,11 +611,13 @@ static void run_shutdown_and_kill_proces
+ 	kill(-1, SIGTERM);
+ 	message(L_CONSOLE | L_LOG, "Sent SIG%s to all processes", "TERM");
+ 	sync();
+-	sleep(1);
++	sleep(10);
+ 
++#if 0
+ 	kill(-1, SIGKILL);
+ 	message(L_CONSOLE, "Sent SIG%s to all processes", "KILL");
+ 	sync();
++#endif
+ 	/*sleep(1); - callers take care about making a pause */
+ }
+ 

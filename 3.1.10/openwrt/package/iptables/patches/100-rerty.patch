@@ -1,0 +1,40 @@
+--- a/iptables-standalone.c
++++ b/iptables-standalone.c
+@@ -38,6 +38,8 @@
+ #include <iptables.h>
+ #include "iptables-multi.h"
+ 
++extern int optind;
++
+ #ifdef IPTABLES_MULTI
+ int
+ iptables_main(int argc, char *argv[])
+@@ -46,6 +48,7 @@ int
+ main(int argc, char *argv[])
+ #endif
+ {
++	int n = 0;
+ 	int ret;
+ 	char *table = "filter";
+ 	struct iptc_handle *handle = NULL;
+@@ -62,6 +65,9 @@ main(int argc, char *argv[])
+ 	init_extensions();
+ #endif
+ 
++retry:
++	handle = NULL;
++	optind = 0;
+ 	ret = do_command(argc, argv, &table, &handle);
+ 	if (ret) {
+ 		ret = iptc_commit(handle);
+@@ -78,6 +84,10 @@ main(int argc, char *argv[])
+ 				iptc_strerror(errno));
+ 		}
+ 		if (errno == EAGAIN) {
++			if (n < 5) {
++				++n;
++				goto retry;
++			}
+ 			exit(RESOURCE_PROBLEM);
+ 		}
+ 	}

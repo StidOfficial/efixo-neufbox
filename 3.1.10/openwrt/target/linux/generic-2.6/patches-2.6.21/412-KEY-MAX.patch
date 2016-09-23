@@ -1,0 +1,22 @@
+--- a/include/linux/input.h
++++ b/include/linux/input.h
+@@ -547,7 +547,7 @@ struct input_absinfo {
+ 
+ /* We avoid low common keys in module aliases so they don't get huge. */
+ #define KEY_MIN_INTERESTING	KEY_MUTE
+-#define KEY_MAX			0x1ff
++#define KEY_MAX			0x2ff
+ 
+ /*
+  * Relative axes
+--- a/include/linux/mod_devicetable.h
++++ b/include/linux/mod_devicetable.h
+@@ -262,7 +262,7 @@ struct i2c_device_id {
+ 
+ /* Input */
+ #define INPUT_DEVICE_ID_EV_MAX		0x1f
+-#define INPUT_DEVICE_ID_KEY_MAX		0x1ff
++#define INPUT_DEVICE_ID_KEY_MAX		0x2ff
+ #define INPUT_DEVICE_ID_REL_MAX		0x0f
+ #define INPUT_DEVICE_ID_ABS_MAX		0x3f
+ #define INPUT_DEVICE_ID_MSC_MAX		0x07

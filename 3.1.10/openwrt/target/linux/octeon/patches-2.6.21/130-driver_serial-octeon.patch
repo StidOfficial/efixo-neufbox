@@ -1,0 +1,210 @@
+--- a/drivers/input/serio/i8042-io.h
++++ b/drivers/input/serio/i8042-io.h
+@@ -27,6 +27,9 @@
+ #include <asm/irq.h>
+ #elif defined(CONFIG_SUPERH64)
+ #include <asm/irq.h>
++#elif defined(CONFIG_CPU_CAVIUM_OCTEON)
++# define I8042_KBD_IRQ	81
++# define I8042_AUX_IRQ	92
+ #else
+ # define I8042_KBD_IRQ	1
+ # define I8042_AUX_IRQ	12
+--- a/drivers/serial/8250.c
++++ b/drivers/serial/8250.c
+@@ -44,6 +44,10 @@
+ #include <asm/io.h>
+ #include <asm/irq.h>
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON) && defined(CONFIG_32BIT)
++#include "octeon-hal-read-write.h"
++#endif
++
+ #include "8250.h"
+ 
+ /*
+@@ -308,7 +312,15 @@ static unsigned int serial_in(struct uar
+ 		return inb(up->port.iobase + 1);
+ 
+ 	case UPIO_MEM:
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#ifdef CONFIG_32BIT
++		return cvmx_read64_uint64(0x8001180000000800ull + offset);
++#else
++	        return __raw_readq(up->port.membase + offset);
++#endif
++#else
+ 		return readb(up->port.membase + offset);
++#endif
+ 
+ 	case UPIO_MEM32:
+ 		return readl(up->port.membase + offset);
+@@ -342,7 +354,17 @@ serial_out(struct uart_8250_port *up, in
+ 		break;
+ 
+ 	case UPIO_MEM:
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		if (offset == (UART_LCR<<up->port.regshift))
++			value &= 0x9f;
++#ifdef CONFIG_32BIT
++		cvmx_write64_uint64(0x8001180000000800ull + offset, (unsigned char)value);
++#else
++		__raw_writeq((unsigned char)value, up->port.membase + offset);
++#endif
++#else
+ 		writeb(value, up->port.membase + offset);
++#endif
+ 		break;
+ 
+ 	case UPIO_MEM32:
+@@ -751,7 +773,9 @@ static int broken_efr(struct uart_8250_p
+ static void autoconfig_16550a(struct uart_8250_port *up)
+ {
+ 	unsigned char status1, status2;
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 	unsigned int iersave;
++#endif
+ 
+ 	up->port.type = PORT_16550A;
+ 	up->capabilities |= UART_CAP_FIFO;
+@@ -799,7 +823,9 @@ static void autoconfig_16550a(struct uar
+ 
+ 	if (!((status2 ^ status1) & UART_MCR_LOOP)) {
+ 		serial_outp(up, UART_LCR, 0);
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		serial_outp(up, UART_MCR, status1 ^ UART_MCR_LOOP);
++#endif
+ 		serial_outp(up, UART_LCR, 0xE0);
+ 		status2 = serial_in(up, 0x02); /* EXCR1 */
+ 		serial_outp(up, UART_LCR, 0);
+@@ -853,6 +879,7 @@ static void autoconfig_16550a(struct uar
+ 		return;
+ 	}
+ 
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 	/*
+ 	 * Try writing and reading the UART_IER_UUE bit (b6).
+ 	 * If it works, this is probably one of the Xscale platform's
+@@ -887,6 +914,7 @@ static void autoconfig_16550a(struct uar
+ 		DEBUG_AUTOCONF("Couldn't force IER_UUE to 0 ");
+ 	}
+ 	serial_outp(up, UART_IER, iersave);
++#endif	
+ }
+ 
+ /*
+@@ -1049,6 +1077,10 @@ static void autoconfig(struct uart_8250_
+ 	up->port.fifosize = uart_config[up->port.type].fifo_size;
+ 	up->capabilities = uart_config[up->port.type].flags;
+ 	up->tx_loadsz = uart_config[up->port.type].tx_loadsz;
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	up->port.fifosize = 64;
++	up->tx_loadsz = 64;
++#endif
+ 
+ 	if (up->port.type == PORT_UNKNOWN)
+ 		goto out;
+@@ -1254,8 +1286,14 @@ receive_chars(struct uart_8250_port *up,
+ 			else if (lsr & UART_LSR_FE)
+ 				flag = TTY_FRAME;
+ 		}
++		/* Temporarily give away our port lock so the console output in a sysrq doesn't deadlock - Chad */
++		spin_unlock(&up->port.lock);
+ 		if (uart_handle_sysrq_char(&up->port, ch))
++		{
++			spin_lock(&up->port.lock);
+ 			goto ignore_char;
++		}
++		spin_lock(&up->port.lock);
+ 
+ 		uart_insert_char(&up->port, lsr, UART_LSR_OE, ch, flag);
+ 
+@@ -1383,6 +1421,14 @@ static irqreturn_t serial8250_interrupt(
+ 		up = list_entry(l, struct uart_8250_port, list);
+ 
+ 		iir = serial_in(up, UART_IIR);
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define UART_USR        0x27    /* UART Status Register */
++		if ((iir & 0xf) == 7) /* Busy interrupt */
++		{
++			serial_in(up, UART_USR);
++			iir = serial_in(up, UART_IIR);
++		}
++#endif
+ 		if (!(iir & UART_IIR_NO_INT)) {
+ 			serial8250_handle_port(up);
+ 
+@@ -1487,7 +1533,11 @@ static void serial8250_timeout(unsigned
+ 	struct uart_8250_port *up = (struct uart_8250_port *)data;
+ 	unsigned int iir;
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	iir = 0;
++#else
+ 	iir = serial_in(up, UART_IIR);
++#endif
+ 	if (!(iir & UART_IIR_NO_INT))
+ 		serial8250_handle_port(up);
+ 	mod_timer(&up->timer, jiffies + poll_timeout(up->port.timeout));
+@@ -2043,6 +2093,16 @@ serial8250_set_termios(struct uart_port
+ 
+ 	serial_dl_write(up, quot);
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++{
++    int spin_loop;
++    for (spin_loop=0;spin_loop<quot*2*16; spin_loop++)
++    {
++            /* spin */
++    }
++}
++#endif
++
+ 	/*
+ 	 * LCR DLAB must be set to enable 64-byte FIFO mode. If the FCR
+ 	 * is written without DLAB set, this mode will be disabled.
+--- a/drivers/serial/8250_early.c
++++ b/drivers/serial/8250_early.c
+@@ -35,6 +35,10 @@
+ #include <asm/io.h>
+ #include <asm/serial.h>
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON) && defined(CONFIG_32BIT)
++#include "octeon-hal-read-write.h"
++#endif
++
+ struct early_uart_device {
+ 	struct uart_port port;
+ 	char options[16];		/* e.g., 115200n8 */
+@@ -47,7 +51,15 @@ static int early_uart_registered __initd
+ static unsigned int __init serial_in(struct uart_port *port, int offset)
+ {
+ 	if (port->iotype == UPIO_MEM)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#ifdef CONFIG_32BIT
++		return cvmx_read64_uint64(0x8001180000000800ull + offset);
++#else
++		return __raw_readq(port->membase + offset);
++#endif
++#else
+ 		return readb(port->membase + offset);
++#endif
+ 	else
+ 		return inb(port->iobase + offset);
+ }
+@@ -55,7 +67,15 @@ static unsigned int __init serial_in(str
+ static void __init serial_out(struct uart_port *port, int offset, int value)
+ {
+ 	if (port->iotype == UPIO_MEM)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#ifdef CONFIG_32BIT
++		cvmx_write64_uint64(0x8001180000000800ull + offset, (unsigned char)value);
++#else
++		__raw_writeq((unsigned char)value, port->membase + offset);
++#endif
++#else
+ 		writeb(value, port->membase + offset);
++#endif
+ 	else
+ 		outb(value, port->iobase + offset);
+ }

@@ -1,0 +1,51 @@
+--- a/netfilter/iptcrdr.c
++++ b/netfilter/iptcrdr.c
+@@ -146,7 +146,11 @@ add_filter_rule2(const char * ifname, co
+                  unsigned short eport, unsigned short iport,
+                  int proto, const char * desc)
+ {
++#if 0
+ 	return add_filter_rule(proto, iaddr, iport);
++#else
++	return 0;
++#endif
+ }
+ 
+ /* get_redirect_rule() 
+@@ -425,10 +429,12 @@ delete_redirect_and_filter_rules(unsigne
+ 		{
+ 			r = delete_rule_and_commit(index, h, miniupnpd_nat_chain, "delete_redirect_rule");
+ 		}
++#if 0
+ 		if((r == 0) && (h = iptc_init("filter")))
+ 		{
+ 			r = delete_rule_and_commit(index, h, miniupnpd_forward_chain, "delete_filter_rule");
+ 		}
++#endif
+ 	}
+ 	del_redirect_desc(eport, proto);
+ 	return r;
+@@ -622,6 +628,7 @@ get_accept_target(void)
+ 	return target;
+ }
+ 
++#if 0
+ /* add_filter_rule()
+  * */
+ int
+@@ -657,13 +664,14 @@ add_filter_rule(int proto, const char * 
+ 	e->next_offset = sizeof(struct ipt_entry)
+ 	                 + match->u.match_size
+ 					 + target->u.target_size;
+-	
++
+ 	r = iptc_init_verify_and_append("filter", miniupnpd_forward_chain, e, "add_filter_rule()");
+ 	free(target);
+ 	free(match);
+ 	free(e);
+ 	return r;
+ }
++#endif
+ 
+ /* ================================ */
+ static int

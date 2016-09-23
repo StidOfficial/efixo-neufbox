@@ -1,0 +1,21 @@
+--- a/drivers/Kconfig
++++ b/drivers/Kconfig
+@@ -52,6 +52,8 @@ source "drivers/i2c/Kconfig"
+ 
+ source "drivers/spi/Kconfig"
+ 
++source "drivers/gpio/Kconfig"
++
+ source "drivers/w1/Kconfig"
+ 
+ source "drivers/hwmon/Kconfig"
+--- a/drivers/Makefile
++++ b/drivers/Makefile
+@@ -5,6 +5,7 @@
+ # Rewritten to use lists instead of if-statements.
+ #
+ 
++obj-$(CONFIG_HAVE_GPIO_LIB)	+= gpio/
+ obj-$(CONFIG_PCI)		+= pci/
+ obj-$(CONFIG_PARISC)		+= parisc/
+ obj-$(CONFIG_RAPIDIO)		+= rapidio/

@@ -1,0 +1,453 @@
+
+--- a/net/netfilter/nf_conntrack_rtsp.c
++++ b/net/netfilter/nf_conntrack_rtsp.c
+@@ -54,7 +54,7 @@
+ static int ports[MAX_PORTS];
+ static int num_ports = 0;
+ static int max_outstanding = 8;
+-static unsigned int setup_timeout = 300;
++static unsigned int setup_timeout = 2*24*3600;
+ 
+ MODULE_AUTHOR("Tom Marshall <tmarshall at real.com>");
+ MODULE_DESCRIPTION("RTSP connection tracking module");
+@@ -72,8 +72,7 @@ static DEFINE_SPINLOCK(rtsp_buffer_lock)
+ 
+ unsigned int (*nf_nat_rtsp_hook) (struct sk_buff * skb,
+ 				  enum ip_conntrack_info ctinfo,
+-				  unsigned int matchoff,
+-				  unsigned int matchlen,
++				  unsigned int matchoff, unsigned int matchlen,
+ 				  struct ip_ct_rtsp_expect * prtspexp,
+ 				  struct nf_conntrack_expect * exp);
+ void (*nf_nat_rtsp_hook_expectfn) (struct nf_conn * ct,
+@@ -292,16 +291,13 @@ static inline int help_out(struct sk_buf
+ 			   enum ip_conntrack_info ctinfo)
+ {
+ 	struct ip_ct_rtsp_expect expinfo;
+-
+-	int dir = CTINFO2DIR(ctinfo);	/* = IP_CT_DIR_ORIGINAL */
+-	//struct  tcphdr* tcph = (void*)iph + iph->ihl * 4;
+-	//uint    tcplen = pktlen - iph->ihl * 4;
++	int dir = CTINFO2DIR(ctinfo);
+ 	char *pdata = rb_ptr;
+-	//uint    datalen = tcplen - tcph->doff * 4;
+ 	uint dataoff = 0;
+ 	int ret = NF_ACCEPT;
+ 
+ 	struct nf_conntrack_expect *exp;
++	struct nf_conn_help *help = nfct_help(ct);
+ 
+ 	__be16 be_loport;
+ 
+@@ -348,7 +344,7 @@ static inline int help_out(struct sk_buf
+ 			ret = NF_DROP;
+ 			goto out;
+ 		}
+-		//memset(exp, 0x00, sizeof(*exp));
++
+ 		be_loport = htons(expinfo.loport);
+ 
+ 		nf_conntrack_expect_init(exp,
+@@ -358,9 +354,9 @@ static inline int help_out(struct sk_buf
+ 					 IPPROTO_UDP, NULL, &be_loport);
+ 
+ 		exp->master = ct;
+-
+ 		exp->expectfn = expected;
+-		exp->flags = 0;
++		exp->flags = NF_CT_EXPECT_PERMANENT;
++		help->help.ct_rtsp_info.rtp_port = be_loport;
+ 
+ 		if (expinfo.pbtype == pb_range) {
+ 			pr_debug
+@@ -378,10 +374,50 @@ static inline int help_out(struct sk_buf
+ 		if (nf_nat_rtsp && ct->status & IPS_NAT_MASK)
+ 			/* pass the request off to the nat helper */
+ 			ret =
++			    nf_nat_rtsp(skb, ctinfo, hdrsoff, hdrslen,
++					     &expinfo, exp);
++		else if (nf_conntrack_expect_related(exp) != 0) {
++			pr_err("nf_conntrack_expect_related failed\n");
++			ret = NF_DROP;
++		}
++		nf_conntrack_expect_put(exp);
++
++		/* Create RTCP-RTP expect */
++		exp = nf_conntrack_expect_alloc(ct);
++		if (!exp) {
++			ret = NF_DROP;
++			goto out;
++		}
++
++		be_loport += 2;
++		expinfo.loport += 2;
++		expinfo.hiport += 2;
++
++		nf_conntrack_expect_init(exp,
++					 ct->tuplehash[!dir].tuple.src.l3num,
++					 &ct->tuplehash[!dir].tuple.src.u3,
++					 &ct->tuplehash[!dir].tuple.dst.u3,
++					 IPPROTO_UDP, NULL, &be_loport);
++
++		exp->master = ct;
++		exp->expectfn = expected;
++		exp->flags = NF_CT_EXPECT_PERMANENT;
++		help->help.ct_rtsp_info.rtcp_port = be_loport;
++
++		if (expinfo.pbtype == pb_range) {
++			pr_debug
++			    ("Changing expectation mask to handle multiple ports\n");
++			exp->mask.dst.u.udp.port = 0xfffe;
++		}
++
++		nf_nat_rtsp = rcu_dereference(nf_nat_rtsp_hook);
++		if (nf_nat_rtsp && ct->status & IPS_NAT_MASK)
++			/* pass the request off to the nat helper */
++			ret =
+ 			    nf_nat_rtsp(skb, ctinfo, hdrsoff, hdrslen, &expinfo,
+ 					exp);
+ 		else if (nf_conntrack_expect_related(exp) != 0) {
+-			pr_info("nf_conntrack_expect_related failed\n");
++			pr_err("nf_conntrack_expect_related failed\n");
+ 			ret = NF_DROP;
+ 		}
+ 		nf_conntrack_expect_put(exp);
+@@ -392,10 +428,40 @@ out:
+ 	return ret;
+ }
+ 
+-static inline int help_in(struct sk_buff *skb, size_t pktlen,
+-			  struct nf_conn *ct, enum ip_conntrack_info ctinfo)
++static inline int
++help_in(struct sk_buff *skb, unsigned char *rb_ptr, unsigned int datalen,
++	 struct nf_conn *ct, enum ip_conntrack_info ctinfo)
+ {
+-	return NF_ACCEPT;
++	char *pdata = rb_ptr;
++	uint dataoff = 0;
++	int ret = NF_ACCEPT;
++
++	while (dataoff < datalen) {
++		uint hdrsoff = 0;
++		uint hdrslen = 0;
++		uint cseqoff = 0;
++		uint cseqlen = 0;
++		uint transoff = 0;
++		uint translen = 0;
++
++		if (!rtsp_parse_message(pdata, datalen, &dataoff,
++					&hdrsoff, &hdrslen,
++					&cseqoff, &cseqlen,
++					&transoff, &translen))
++			break;	/* not a valid message */
++
++		/* Has Transport: */
++		if (!transoff)
++			continue;
++
++		if (nf_nat_rtsp_hook)
++			ret =
++			    nf_nat_rtsp_hook(skb, ctinfo, hdrsoff, hdrslen,
++					     (void *)ct, NULL);
++		break;
++	}
++
++	return ret;
+ }
+ 
+ static int help(struct sk_buff **pskb, unsigned int protoff,
+@@ -450,7 +516,7 @@ static int help(struct sk_buff **pskb, u
+ 	case IP_CT_DIR_REPLY:
+ 		pr_debug("IP_CT_DIR_REPLY\n");
+ 		/* inbound packet: server->client */
+-		ret = NF_ACCEPT;
++		ret = help_in(skb, rb_ptr, datalen, ct, ctinfo);
+ 		break;
+ 	}
+ 
+@@ -507,7 +573,7 @@ static int __init init(void)
+ 		hlpr->tuple.src.l3num = AF_INET;
+ 		hlpr->tuple.src.u.tcp.port = htons(ports[i]);
+ 		hlpr->tuple.dst.protonum = IPPROTO_TCP;
+-		hlpr->mask.dst.u.tcp.port = 0xFFFF;
++		hlpr->mask.src.u.tcp.port = 0xFFFF;
+ 		hlpr->mask.dst.protonum = 0xFF;
+ 		hlpr->max_expected = max_outstanding;
+ 		hlpr->timeout = setup_timeout;
+--- a/net/ipv4/netfilter/nf_nat_rtsp.c
++++ b/net/ipv4/netfilter/nf_nat_rtsp.c
+@@ -35,6 +35,7 @@
+ #include <net/netfilter/nf_nat_helper.h>
+ #include <net/netfilter/nf_nat_rule.h>
+ #include <linux/netfilter/nf_conntrack_rtsp.h>
++#include <net/netfilter/nf_conntrack_helper.h>
+ #include <net/netfilter/nf_conntrack_expect.h>
+ 
+ #include <linux/inet.h>
+@@ -68,6 +69,17 @@ MODULE_PARM_DESC(destaction,
+ #define SKIP_WSPACE(ptr,len,off) while(off < len && isspace(*(ptr+off))) { off++; }
+ 
+ /*** helper functions ***/
++static void nf_conn_dump(struct nf_conn const *ct)
++{
++	struct nf_conntrack_tuple const *tuple;
++
++	tuple = &ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple;
++	printk("RTSP: rtp://" NIPQUAD_FMT ":%u", NIPQUAD(tuple->src.u3.ip),
++	       tuple->src.u.udp.port);
++	tuple = &ct->tuplehash[IP_CT_DIR_REPLY].tuple;
++	printk(" -> " NIPQUAD_FMT ":%u\n", NIPQUAD(tuple->src.u3.ip),
++	       tuple->src.u.udp.port);
++}
+ 
+ static void
+ get_skb_tcpdata(struct sk_buff *skb, char **pptcpdata, uint * ptcpdatalen)
+@@ -79,6 +91,22 @@ get_skb_tcpdata(struct sk_buff *skb, cha
+ 	*ptcpdatalen = ((char *)skb->h.raw + skb->len) - *pptcpdata;
+ }
+ 
++static char *memstr(char *haystack, char const *needle, size_t hl)
++{
++	if (haystack && needle) {
++		char const *end;
++
++		size_t nl = strnlen(needle, hl);
++
++		end = haystack + hl - nl;
++		for (; haystack < end; ++haystack)
++			if (memcmp(haystack, needle, nl) == 0)
++				return haystack;
++	}
++
++	return NULL;
++}
++
+ /*** nat functions ***/
+ 
+ /*
+@@ -146,7 +174,7 @@ rtsp_mangle_tran(enum ip_conntrack_info
+ 	rbuf1len = rbufalen = 0;
+ 	switch (prtspexp->pbtype) {
+ 	case pb_single:
+-		for (loport = prtspexp->loport; loport != 0; loport++) {	/* XXX: improper wrap? */
++		for (loport = prtspexp->loport; loport != 0; loport += 4) {	/* XXX: improper wrap? */
+ 			t->dst.u.udp.port = htons(loport);
+ 			if (nf_conntrack_expect_related(exp) == 0) {
+ 				pr_debug("using port %hu\n", loport);
+@@ -159,7 +187,7 @@ rtsp_mangle_tran(enum ip_conntrack_info
+ 		}
+ 		break;
+ 	case pb_range:
+-		for (loport = prtspexp->loport; loport != 0; loport += 2) {	/* XXX: improper wrap? */
++		for (loport = prtspexp->loport; loport != 0; loport += 4) {	/* XXX: improper wrap? */
+ 			t->dst.u.udp.port = htons(loport);
+ 			if (nf_conntrack_expect_related(exp) == 0) {
+ 				hiport = loport + 1;	//~exp->mask.dst.u.udp.port;
+@@ -342,9 +370,11 @@ rtsp_mangle_tran(enum ip_conntrack_info
+ 	return 1;
+ }
+ 
+-static uint
+-help_out(struct sk_buff *skb, enum ip_conntrack_info ctinfo,
+-	 unsigned int matchoff, unsigned int matchlen,
++static unsigned int
++help_out(struct sk_buff *skb,
++	 enum ip_conntrack_info ctinfo,
++	 unsigned int matchoff,
++	 unsigned int matchlen,
+ 	 struct ip_ct_rtsp_expect *prtspexp, struct nf_conntrack_expect *exp)
+ {
+ 	char *ptcp;
+@@ -395,8 +425,83 @@ help_out(struct sk_buff *skb, enum ip_co
+ }
+ 
+ static unsigned int
+-help(struct sk_buff *skb, enum ip_conntrack_info ctinfo,
+-     unsigned int matchoff, unsigned int matchlen,
++help_in(struct sk_buff *skb,
++	enum ip_conntrack_info ctinfo,
++	unsigned int matchoff, unsigned int matchlen, struct nf_conn *ct)
++{
++	struct nf_conn_help *help = nfct_help(ct);
++	char rbuf[16];
++	char *ptcp;
++	char *p;
++	uint tcplen;
++	uint hdrsoff;
++	uint hdrslen;
++	uint off;
++	uint lineoff;
++	uint linelen;
++	uint oldoff;
++	uint oldlen;
++	uint newlen;
++	u16 port;
++
++	pr_debug("NAT rtsp help_in\n");
++
++	if (!help)
++		return NF_ACCEPT;
++
++	get_skb_tcpdata(skb, &ptcp, &tcplen);
++	hdrsoff = matchoff;
++	hdrslen = matchlen;
++	off = hdrsoff;
++
++	while (nf_mime_nextline
++	       (ptcp, hdrsoff + hdrslen, &off, &lineoff, &linelen)) {
++		if (linelen == 0)
++			break;
++		if (off > hdrsoff + hdrslen) {
++			pr_info("!! overrun !!");
++			break;
++		}
++
++		pr_debug("hdr: len=%u, %.*s", linelen, (int)linelen,
++			 ptcp + lineoff);
++
++		p = ptcp + lineoff;
++		if (nf_strncasecmp(p, "Transport:", 10) != 0)
++			continue;
++
++		p += sizeof("Transport:") - 1;
++		p = memstr(p, "client_port=",
++			   linelen - sizeof("Transport:") - 1);
++		if (!p)
++			continue;
++
++		p += sizeof("client_port=") - 1;
++		oldoff = p - ptcp;
++		if (oldoff >= (lineoff + linelen)) {
++			pr_info("!! overrun !!");
++			break;
++		}
++
++		oldlen = nf_strtou16(p, &port);
++
++		if (port != help->help.ct_rtsp_info.rtp_port) {
++			port = help->help.ct_rtsp_info.rtp_port;
++			newlen = snprintf(rbuf, sizeof(rbuf), "%hu", port);
++			if (!nf_nat_mangle_tcp_packet
++					(&skb, ct, ctinfo, oldoff, oldlen, rbuf, newlen))
++				pr_err("mangle packet failed\n");
++		}
++	}
++
++	return NF_ACCEPT;
++}
++
++static unsigned int
++help(struct sk_buff *skb,
++     enum ip_conntrack_info ctinfo,
++     unsigned int matchoff,
++     unsigned int matchlen,
+      struct ip_ct_rtsp_expect *prtspexp, struct nf_conntrack_expect *exp)
+ {
+ 	int dir = CTINFO2DIR(ctinfo);
+@@ -407,9 +512,7 @@ help(struct sk_buff *skb, enum ip_conntr
+ 		rc = help_out(skb, ctinfo, matchoff, matchlen, prtspexp, exp);
+ 		break;
+ 	case IP_CT_DIR_REPLY:
+-		pr_debug("unmangle ! %u\n", ctinfo);
+-		/* XXX: unmangle */
+-		rc = NF_ACCEPT;
++		rc = help_in(skb, ctinfo, matchoff, matchlen, (void *)prtspexp);
+ 		break;
+ 	}
+ 
+@@ -418,15 +521,16 @@ help(struct sk_buff *skb, enum ip_conntr
+ 
+ static void expected(struct nf_conn *ct, struct nf_conntrack_expect *exp)
+ {
++	struct nf_conn *master = ct->master;
++	struct nf_conn_help *help;
+ 	struct nf_nat_multi_range_compat mr;
+ 	u_int32_t newdstip, newsrcip, newip;
++	u16 port;
+ 
+-	struct nf_conn *master = ct->master;
++	help = nfct_help(master);
+ 
+ 	newdstip = master->tuplehash[IP_CT_DIR_ORIGINAL].tuple.src.u3.ip;
+ 	newsrcip = ct->tuplehash[IP_CT_DIR_ORIGINAL].tuple.src.u3.ip;
+-	//FIXME (how to port that ?)
+-	//code from 2.4 : newip = (HOOK2MANIP(hooknum) == IP_NAT_MANIP_SRC) ? newsrcip : newdstip;
+ 	newip = newdstip;
+ 
+ 	pr_debug
+@@ -434,11 +538,18 @@ static void expected(struct nf_conn *ct,
+ 	     NIPQUAD(newsrcip), NIPQUAD(newdstip), NIPQUAD(newip));
+ 
+ 	mr.rangesize = 1;
+-	// We don't want to manip the per-protocol, just the IPs. 
++	// We don't want to manip the per-protocol, just the IPs.
+ 	mr.range[0].flags = IP_NAT_RANGE_MAP_IPS;
+ 	mr.range[0].min_ip = mr.range[0].max_ip = newip;
+ 
++	port = ct->tuplehash[IP_CT_DIR_REPLY].tuple.src.u.udp.port;
++	if (!((port - help->help.ct_rtsp_info.rtcp_port) % 4))
++		ct->tuplehash[IP_CT_DIR_REPLY].tuple.src.u.udp.port = help->help.ct_rtsp_info.rtcp_port;
++	else
++		ct->tuplehash[IP_CT_DIR_REPLY].tuple.src.u.udp.port = help->help.ct_rtsp_info.rtp_port;
++
+ 	nf_nat_setup_info(ct, &mr.range[0], NF_IP_PRE_ROUTING);
++	nf_conn_dump(ct);
+ }
+ 
+ static void __exit fini(void)
+--- a/include/linux/netfilter/nf_conntrack_rtsp.h
++++ b/include/linux/netfilter/nf_conntrack_rtsp.h
+@@ -15,6 +15,12 @@
+ #define IP_NF_RTSP_VERSION "0.6.21"
+ 
+ #ifdef __KERNEL__
++
++struct nf_ct_rtsp_master {
++	__be16 rtp_port;
++	__be16 rtcp_port;
++};
++
+ /* port block types */
+ typedef enum {
+ 	pb_single,		/* client_port=x */
+@@ -59,6 +65,6 @@ extern void (*nf_nat_rtsp_hook_expectfn)
+ 
+ #define RTSP_PORT   554
+ 
+-#endif				/* __KERNEL__ */
++#endif /* __KERNEL__ */
+ 
+-#endif				/* _IP_CONNTRACK_RTSP_H */
++#endif /* _IP_CONNTRACK_RTSP_H */
+--- a/include/net/netfilter/nf_conntrack.h
++++ b/include/net/netfilter/nf_conntrack.h
+@@ -46,6 +46,7 @@ union nf_conntrack_expect_proto {
+ #include <linux/netfilter/nf_conntrack_pptp.h>
+ #include <linux/netfilter/nf_conntrack_h323.h>
+ #include <linux/netfilter/nf_conntrack_sane.h>
++#include <linux/netfilter/nf_conntrack_rtsp.h>
+ 
+ /* per conntrack: application helper private data */
+ union nf_conntrack_help {
+@@ -54,6 +55,7 @@ union nf_conntrack_help {
+ 	struct nf_ct_pptp_master ct_pptp_info;
+ 	struct nf_ct_h323_master ct_h323_info;
+ 	struct nf_ct_sane_master ct_sane_info;
++	struct nf_ct_rtsp_master ct_rtsp_info;
+ };
+ 
+ #include <linux/types.h>
+--- a/net/netfilter/nf_conntrack_expect.c
++++ b/net/netfilter/nf_conntrack_expect.c
+@@ -420,6 +420,11 @@ static int exp_seq_show(struct seq_file
+ 		    __nf_ct_l3proto_find(expect->tuple.src.l3num),
+ 		    __nf_ct_l4proto_find(expect->tuple.src.l3num,
+ 				       expect->tuple.dst.protonum));
++
++	if (expect->flags & NF_CT_EXPECT_PERMANENT) {
++		seq_printf(s, "PERMANENT");
++	}
++
+ 	return seq_putc(s, '\n');
+ }
+ 

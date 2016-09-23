@@ -1,0 +1,22 @@
+--- a/include/tropicssl/config.h
++++ b/include/tropicssl/config.h
+@@ -74,8 +74,8 @@
+ 
+ /*
+  * Enable all SSL/TLS debugging messages.
++ * #define TROPICSSL_DEBUG_MSG
+  */
+-#define TROPICSSL_DEBUG_MSG
+ 
+ /*
+  * Enable the checkup functions (*_self_test).
+@@ -156,8 +156,8 @@
+  *          library/ssl_tls.c
+  *
+  * This module provides debugging functions.
++ * #define TROPICSSL_DEBUG_C
+  */
+-#define TROPICSSL_DEBUG_C
+ 
+ /*
+  * Module:  library/des.c

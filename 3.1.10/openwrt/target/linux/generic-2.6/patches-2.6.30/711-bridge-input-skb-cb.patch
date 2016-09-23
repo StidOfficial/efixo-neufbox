@@ -1,0 +1,79 @@
+--- a/net/bridge/br_device.c
++++ b/net/bridge/br_device.c
+@@ -26,6 +26,8 @@ int br_dev_xmit(struct sk_buff *skb, str
+ 	const unsigned char *dest = skb->data;
+ 	struct net_bridge_fdb_entry *dst;
+ 
++	BR_INPUT_SKB_CB(skb)->brdev = dev;
++
+ 	dev->stats.tx_packets++;
+ 	dev->stats.tx_bytes += skb->len;
+ 
+--- a/net/bridge/br_forward.c
++++ b/net/bridge/br_forward.c
+@@ -110,6 +110,7 @@ static void br_flood(struct net_bridge *
+ {
+ 	struct net_bridge_port *p;
+ 	struct net_bridge_port *prev;
++	struct net_device *dev = BR_INPUT_SKB_CB(skb)->brdev;
+ 
+ 	prev = NULL;
+ 
+@@ -119,7 +120,7 @@ static void br_flood(struct net_bridge *
+ 				struct sk_buff *skb2;
+ 
+ 				if ((skb2 = skb_clone(skb, GFP_ATOMIC)) == NULL) {
+-					br->dev->stats.tx_dropped++;
++					dev->stats.tx_dropped++;
+ 					goto out;
+ 				}
+ 
+@@ -136,7 +137,7 @@ static void br_flood(struct net_bridge *
+ 	if (skb0) {
+ 		skb = skb_clone(skb, GFP_ATOMIC);
+ 		if (!skb) {
+-			br->dev->stats.tx_dropped++;
++			dev->stats.tx_dropped++;
+ 			goto out;
+ 		}
+ 	}
+--- a/net/bridge/br_private.h
++++ b/net/bridge/br_private.h
+@@ -130,6 +130,12 @@ struct net_bridge
+ 	struct kobject			*ifobj;
+ };
+ 
++struct br_input_skb_cb {
++	struct net_device *brdev;
++};
++
++#define BR_INPUT_SKB_CB(__skb)	((struct br_input_skb_cb *)(__skb)->cb)
++
+ extern struct notifier_block br_device_notifier;
+ extern const u8 br_group_address[ETH_ALEN];
+ 
+--- a/net/bridge/br_input.c
++++ b/net/bridge/br_input.c
+@@ -20,9 +20,9 @@
+ /* Bridge group multicast address 802.1d (pg 51). */
+ const u8 br_group_address[ETH_ALEN] = { 0x01, 0x80, 0xc2, 0x00, 0x00, 0x00 };
+ 
+-static void br_pass_frame_up(struct net_bridge *br, struct sk_buff *skb)
++static int br_pass_frame_up(struct sk_buff *skb)
+ {
+-	struct net_device *indev, *brdev = br->dev;
++	struct net_device *indev, *brdev = BR_INPUT_SKB_CB(skb)->brdev;
+ 
+ 	brdev->stats.rx_packets++;
+ 	brdev->stats.rx_bytes += skb->len;
+@@ -30,8 +30,8 @@ static void br_pass_frame_up(struct net_
+ 	indev = skb->dev;
+ 	skb->dev = brdev;
+ 
+-	NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_IN, skb, indev, NULL,
+-		netif_receive_skb);
++	return NF_HOOK(PF_BRIDGE, NF_BR_LOCAL_IN, skb, indev, NULL,
++		       netif_receive_skb);
+ }
+ 
+ /* note: already called with rcu_read_lock (preempt_disabled) */

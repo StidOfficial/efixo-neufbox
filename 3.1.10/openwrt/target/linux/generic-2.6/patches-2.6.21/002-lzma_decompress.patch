@@ -1,0 +1,23 @@
+--- a/lib/Kconfig
++++ b/lib/Kconfig
+@@ -50,6 +50,9 @@ config AUDIT_GENERIC
+ #
+ # compression support is select'ed if needed
+ #
++config LZMA_DECOMPRESS
++	tristate
++
+ config ZLIB_INFLATE
+ 	tristate
+ 
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -48,6 +48,8 @@ obj-$(CONFIG_ZLIB_INFLATE) += zlib_infla
+ obj-$(CONFIG_ZLIB_DEFLATE) += zlib_deflate/
+ obj-$(CONFIG_REED_SOLOMON) += reed_solomon/
+ 
++obj-$(CONFIG_LZMA_DECOMPRESS) += lzma/
++
+ obj-$(CONFIG_TEXTSEARCH) += textsearch.o
+ obj-$(CONFIG_TEXTSEARCH_KMP) += ts_kmp.o
+ obj-$(CONFIG_TEXTSEARCH_BM) += ts_bm.o

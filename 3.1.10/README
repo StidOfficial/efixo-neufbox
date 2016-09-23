@@ -1,0 +1,61 @@
+ 
+ www: http://dev.efixo.net
+ Firmware base on OpenWRT (Backfire 10.03.1-rc4 r24148): http://openwrt.org
+
+ == Hacking ==
+ http://wiki.openwrt.org/doc/devel/start
+
+--
+usage:
+
+   <firmware>-menuconfig          - Configure <firmware>
+   <firmware>-kernel_menuconfig   - Kernel configure <firmware>
+   <firmware>                     - Build <firmware>
+   <firmware>-<package>-clean     - Clean <firmware> <package>
+   <firmware>-<package>-compile   - Build <firmware> <package>
+   <firmware>-<package>-refresh   - Refresh <firmware> <package>
+   <firmware>-<package>-install   - Install <firmware> <package>
+   <box>-release                  - Release firmwares
+   distclean                      - Clean everything
+   logs                           - Print last builded packages
+
+   Options:
+     V=99: Output to stdout build in single thread
+
+ * Build nb4-firmware:
+ ~$ cd svn.efixo.net/trunk
+ ~$ make nb4-main
+
+ * Build nb5-firmware:
+ ~$ cd svn.efixo.net/trunk
+ ~$ wget http://downloads.efixo.net/toolchain-cavium-octeon-gcc-4.1.2.tar.bz2
+ ~$ tar xf toolchain-cavium-octeon-gcc-4.1.2.tar.bz2
+ ~$ make nb5-main
+
+--
+Environment Variables
+
+VALID=
+ - Disable root passwd
+PROFILING=
+ - Profile CPU usage, output /tmp/make.profiling
+MAKE_JOBS=
+ - Specifies the number of jobs (commands) to run simultaneously
+ - [default value = cpu count + 1]
+TFTPBOOT_DIR=
+ - Specifies the output directory
+ - [default value = /tftpboot]
+HOST=
+ - Specifies Host IP address
+ - [default value = "HOST"]
+COLOR=
+ - Specifies the output messages color
+ - [default value = $(GREEN)]
+${BOX}_IPADDR=
+ - Define BOX ipaddr
+NO_REV=
+ - Prevent from firmware svn release copy
+NFS=1
+ - Add NFS support
+I_DO_NOT_WANT_REBUILD=
+ - Build Image without rebuild firmware

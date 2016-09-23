@@ -1,0 +1,13 @@
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -618,7 +618,9 @@ ifdef CONFIG_CAVIUM_OCTEON_2ND_KERNEL
+ load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff84100000
+ else
+ #This would be the correct address format for linking the kernel at 1MB for DDR region 0
+-load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff80100000
++#load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff80100000
++#This would be the correct address format for linking the kernel at 17MB for DDR region 0
++load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff81100000
+ #This would be the correct address format for linking the kernel at 512MB for DDR region 2
+ #load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xa800000020000000
+ #This would be the correct address format for linking the kernel at 16.25GB for DDR regoin 1

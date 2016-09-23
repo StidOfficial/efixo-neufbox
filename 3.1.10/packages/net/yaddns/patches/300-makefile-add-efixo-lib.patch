@@ -1,0 +1,8 @@
+--- a/src/Makefile.am
++++ b/src/Makefile.am
+@@ -10,3 +10,5 @@ yaddns_SOURCES = yaddns.c \
+ 
+ yaddns_SOURCES += services/dyndns.c
+ 
++yaddns_LDADD = -lnbd -letk
++

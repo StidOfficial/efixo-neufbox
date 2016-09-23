@@ -1,0 +1,25 @@
+--- a/drivers/char/Kconfig
++++ b/drivers/char/Kconfig
+@@ -1076,5 +1076,11 @@ config TELCLOCK
+ 	  /sys/devices/platform/telco_clock, with a number of files for
+ 	  controlling the behavior of this hardware.
+ 
++config RING_LOGS
++	tristate "Enable support for Neufbox 5 logs"
++	default "y"
++	help
++	  This option enables Neufbox 5 logs support.
++
+ endmenu
+ 
+--- a/drivers/char/Makefile
++++ b/drivers/char/Makefile
+@@ -108,6 +108,8 @@ obj-$(CONFIG_IPMI_HANDLER)	+= ipmi/
+ obj-$(CONFIG_HANGCHECK_TIMER)	+= hangcheck-timer.o
+ obj-$(CONFIG_TCG_TPM)		+= tpm/
+ 
++obj-$(CONFIG_RING_LOGS) += ring-logs.o
++
+ # Files generated that shall be removed upon make clean
+ clean-files := consolemap_deftbl.c defkeymap.c
+ 

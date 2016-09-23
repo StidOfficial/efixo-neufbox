@@ -1,0 +1,14 @@
+# Broadcom endpointdrv configuration
+
+config ENDPTDRV_VERSION
+    string "Broadcom endpoint driver Version"
+    default '4.03.20'
+    depends on PACKAGE_kmod-broadcom-endpointdrv
+    help
+	  Choose which release of the broadcom driver to compile into the firmware
+
+config ENDPTDRV_WIDEBAND
+    bool "Enable wideband mode"
+    default n
+    help
+	  Enable wideband mode (only for testing) 

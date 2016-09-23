@@ -1,0 +1,44 @@
+#! /bin/sh
+
+aclocal \
+&& autoheader \
+&& libtoolize --force \
+&& automake --add-missing \
+&& autoconf
+
+
+./configure \
+	--enable-task-manager \
+	--enable-event-manager \
+	--enable-service-manager \
+	--enable-net-infra \
+	--enable-syslog \
+	\
+	--enable-event-plugin \
+	--enable-status-plugin \
+	--enable-nvram-plugin \
+	--enable-leds-plugin \
+	--enable-autoconf-plugin \
+	--enable-nbctl-plugin \
+	--enable-spy-plugin \
+	--enable-firewall-plugin \
+	--enable-nat-plugin \
+	--enable-uroute-plugin \
+	--enable-uping-plugin \
+	--enable-utraceroute-plugin \
+	--enable-lan-plugin \
+	--enable-wlan-plugin \
+	--enable-hotspot-plugin \
+	--enable-voip-plugin \
+	--enable-stb-plugin \
+	--enable-igmp-plugin \
+	--enable-backup3g-plugin \
+	--enable-plc-plugin \
+	--enable-dsl-plugin \
+	--enable-sfp-plugin \
+	--enable-vsstest-plugin \
+	--enable-disk-plugin \
+	--enable-ddnsctl-plugin \
+	--enable-sambactl-plugin \
+	--enable-usharectl-plugin \
+

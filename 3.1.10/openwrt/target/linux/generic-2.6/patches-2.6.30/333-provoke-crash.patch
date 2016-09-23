@@ -1,0 +1,207 @@
+Signed-off-by: Simon Kagstrom <simon.kagstrom@netinsight.net>
+---
+Obviously this feature is for debugging and testing only, and of
+interest to fairly few people. I've used it for testing the kmsg_dump
+stuff (hence the CC:s above) and kdump, and have found it fairly useful.
+If it's not of interest, at least this mail will be in the archives if
+someone else needs something like it :-)
+
+ lib/Kconfig.debug   |    8 +++
+ lib/Makefile        |    2 +
+ lib/provoke-crash.c |  163 +++++++++++++++++++++++++++++++++++++++++++++++++++
+ 3 files changed, 173 insertions(+), 0 deletions(-)
+ create mode 100644 lib/provoke-crash.c
+--- a/lib/Kconfig.debug
++++ b/lib/Kconfig.debug
+@@ -961,6 +961,14 @@ config DMA_API_DEBUG
+ 	  This option causes a performance degredation.  Use only if you want
+ 	  to debug device drivers. If unsure, say N.
+ 
++config PROVOKE_CRASH
++	tristate "Provoke kernel crashes through a debugfs interface"
++	depends on DEBUG_FS
++	help
++	  Enable the kernel to crash in different ways through a debugfs interface.
++	  NOTE: This feature is dangerous!
++	  If unsure, say N.
++
+ source "samples/Kconfig"
+ 
+ source "lib/Kconfig.kgdb"
+--- a/lib/Makefile
++++ b/lib/Makefile
+@@ -92,6 +92,8 @@ obj-$(CONFIG_NLATTR) += nlattr.o
+ 
+ obj-$(CONFIG_DMA_API_DEBUG) += dma-debug.o
+ 
++obj-$(CONFIG_PROVOKE_CRASH) += provoke-crash.o
++
+ hostprogs-y	:= gen_crc32table
+ clean-files	:= crc32table.h
+ 
+--- /dev/null
++++ b/lib/provoke-crash.c
+@@ -0,0 +1,163 @@
++/*
++ * Copyright (C) 2009 Net Insight
++ *
++ * Kernel module to crash or cause problems for the kernel in
++ * various ways.
++ *
++ * Author: Simon Kagstrom <simon.kagstrom@netinsight.net>
++ *
++ * This program is free software; you can redistribute it and/or
++ * modify it under the terms of the GNU General Public License as
++ * published by the Free Software Foundation, version 2 of the
++ * License.
++ *
++ */
++#include <linux/module.h>
++#include <linux/sched.h>
++#include <linux/hardirq.h>
++#include <linux/debugfs.h>
++
++static ssize_t bugon_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	BUG_ON(1);
++
++	return count;
++}
++
++static ssize_t null_dereference_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	*(volatile int*)NULL;
++
++	return count;
++}
++
++static ssize_t oops_interrupt_context_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	add_preempt_count(SOFTIRQ_MASK);
++	return null_dereference_write(f, buf, count, off);
++}
++
++static ssize_t panic_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	panic("User-caused panic\n");
++
++	return count;
++}
++
++static ssize_t write_after_free_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	size_t len = 1024;
++	u32 *data = kmalloc(len, GFP_KERNEL);
++
++	kfree(data);
++	schedule();
++	memset(data, 0x78, len);
++
++	return count;
++}
++
++static ssize_t overwrite_allocation_write(struct file *f,
++		const char __user *buf, size_t count, loff_t *off)
++{
++	size_t len = 1020;
++	u32 *data = kmalloc(len, GFP_KERNEL);
++
++	data[1024 / sizeof(u32)] = 0x12345678;
++	kfree(data);
++
++	return count;
++}
++
++static ssize_t corrupt_stack_write(struct file *f, const char __user *buf,
++		size_t count, loff_t *off)
++{
++	volatile u32 data[8];
++
++	data[12] = 0x12345678;
++
++	return count;
++}
++
++
++static ssize_t unaligned_load_store_write(struct file *f,
++		const char __user *buf, size_t count, loff_t *off)
++{
++	static u8 data[5] __attribute__((aligned(4))) = {1,2,3,4,5};
++	u32 *p;
++	u32 val = 0x12345678;
++
++	p = (u32*)(data + 1);
++	if (*p == 0)
++		val = 0x87654321;
++	*p = val;
++
++	return count;
++}
++
++
++struct crash_entry
++{
++	const char *name;
++	struct file_operations fops;
++};
++
++static struct crash_entry crash_entries[] = {
++	{"unaligned_load_store",	{.write = unaligned_load_store_write}},
++	{"write_after_free",		{.write = write_after_free_write}},
++	{"overwrite_allocation",	{.write = overwrite_allocation_write}},
++	{"corrupt_stack", 		{.write = corrupt_stack_write}},
++	{"bugon",			{.write = bugon_write}},
++	{"panic",			{.write = panic_write}},
++	{"null_dereference",		{.write = null_dereference_write}},
++	{"oops_interrupt_context",	{.write = oops_interrupt_context_write}},
++};
++
++static struct dentry *provoke_crash_root;
++
++static int __init provoke_crash_init(void)
++{
++	int i;
++
++	provoke_crash_root = debugfs_create_dir("provoke-crash", NULL);
++	if (!provoke_crash_root) {
++		printk(KERN_ERR "provoke-crash: creating root dir failed\n");
++		return -ENODEV;
++	}
++
++	for (i = 0; i < ARRAY_SIZE(crash_entries); i++) {
++		struct crash_entry *cur = &crash_entries[i];
++		struct dentry *de;
++
++		cur->fops.open = debugfs_file_operations.open;
++		de = debugfs_create_file(cur->name, 0200, provoke_crash_root,
++				NULL, &cur->fops);
++		if (de == NULL) {
++			printk(KERN_ERR "provoke_crash: could not create %s\n",
++					cur->name);
++			goto out_err;
++		}
++	}
++
++	return 0;
++out_err:
++	debugfs_remove_recursive(provoke_crash_root);
++
++	return -ENODEV;
++}
++
++static void __exit provoke_crash_exit(void)
++{
++	debugfs_remove_recursive(provoke_crash_root);
++}
++
++module_init(provoke_crash_init);
++module_exit(provoke_crash_exit);
++
++MODULE_AUTHOR("Simon Kagstrom <simon.kagstrom@netinsight.net>");
++MODULE_DESCRIPTION("Provoke crashes through a debugfs");
++MODULE_LICENSE("GPL");

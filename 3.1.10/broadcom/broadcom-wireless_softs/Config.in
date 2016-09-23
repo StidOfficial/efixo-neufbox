@@ -1,0 +1,11 @@
+config RADIUS_NAS_PORT_ID
+       string "NAS PORT ID"
+       default "99.Neufbox.33"
+
+config RADIUS_WISPR_LOCATION_ID_NETWORK_PREFIX
+       string "WISPr location id network (prefix)"
+       default "SFRWiFiMobile/Neufbox"
+
+config RADIUS_WISPR_LOCATION_NAME_PREFIX
+       string "WISPr location name (prefix)"
+       default "SFR,Neufbox"

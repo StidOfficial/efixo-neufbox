@@ -1,0 +1,70 @@
+--- a/arch/mips/include/asm/mipsregs.h
++++ b/arch/mips/include/asm/mipsregs.h
+@@ -552,6 +552,12 @@
+ 
+ #define MIPS_CONF7_RPS		(_ULCAST_(1) << 2)
+ 
++#define BRCM_CONF0_EDSP		(_ULCAST_(1) <<  1)
++#define BRCM_CONF0_LMB		(_ULCAST_(1) << 19)
++#define BRCM_CONF0_BHTD		(_ULCAST_(1) << 21)
++#define BRCM_CONF0_DSUP		(_ULCAST_(1) << 25)
++#define BRCM_CONF0_DCE		(_ULCAST_(1) << 30)
++#define BRCM_CONF0_ICE		(_ULCAST_(1) << 31)
+ 
+ /*
+  * Bits in the MIPS32/64 coprocessor 1 (FPU) revision register.
+@@ -921,6 +927,9 @@ do {									\
+ #define write_c0_framemask(val)	__write_32bit_c0_register($21, 0, val)
+ 
+ /* RM9000 PerfControl performance counter control register */
++#define read_c0_brcm_config0()	__read_32bit_c0_register($22, 0)
++#define read_c0_brcm_config1()	__read_32bit_c0_register($22, 1)
++
+ #define read_c0_perfcontrol()	__read_32bit_c0_register($22, 0)
+ #define write_c0_perfcontrol(val) __write_32bit_c0_register($22, 0, val)
+ 
+--- a/arch/mips/kernel/proc.c
++++ b/arch/mips/kernel/proc.c
+@@ -84,6 +84,17 @@ static int show_cpuinfo(struct seq_file
+ 	seq_printf(m, fmt, 'I', vcei_count);
+ 	seq_printf(m, "\n");
+ 
++#ifdef CONFIG_BCM63XX
++	seq_printf(m, "brcm config\t\t:%s%s%s%s%s%s\n",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_EDSP) ? " edsp" : "",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_LMB) ? " lmb" : "",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_BHTD) ? " " : " bhtd",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_DSUP) ? " dsup" : "",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_DCE) ? " dce" : "",
++		      (cpu_data[n].brcm_config0 & BRCM_CONF0_ICE) ? " ice" : ""
++		  );
++#endif
++
+ 	return 0;
+ }
+ 
+--- a/arch/mips/include/asm/cpu-info.h
++++ b/arch/mips/include/asm/cpu-info.h
+@@ -70,6 +70,9 @@ struct cpuinfo_mips {
+ #ifdef CONFIG_MIPS_MT_SMTC
+ 	int			tc_id;   /* Thread Context number */
+ #endif
++#ifdef CONFIG_BCM63XX
++	unsigned int		brcm_config0;
++#endif
+ 	void 			*data;	/* Additional data */
+ 	unsigned int		watch_reg_count;   /* Number that exist */
+ 	unsigned int		watch_reg_use_cnt; /* Usable by ptrace */
+--- a/arch/mips/kernel/cpu-probe.c
++++ b/arch/mips/kernel/cpu-probe.c
+@@ -711,6 +711,10 @@ static void __cpuinit decode_configs(str
+ 	if (ok)
+ 		ok = decode_config3(c);
+ 
++#ifdef CONFIG_BCM63XX
++	c->brcm_config0 = read_c0_brcm_config0();
++#endif
++
+ 	mips_probe_watch_registers(c);
+ }
+ 

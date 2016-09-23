@@ -1,0 +1,30 @@
+--- a/src/ctl.c
++++ b/src/ctl.c
+@@ -141,6 +141,7 @@ static int ctl_getifaddr(const char *ifn
+ 	int s;
+ 	struct ifreq ifr;
+ 	int ifrlen;
++	static int error_flag = 0;
+ 
+ 	if(!ifname || ifname[0]=='\0')
+ 		return -1;
+@@ -159,11 +160,17 @@ static int ctl_getifaddr(const char *ifn
+ 
+ 	if(ioctl(s, SIOCGIFADDR, &ifr, &ifrlen) < 0)
+ 	{
+-		log_error("ioctl(s, SIOCGIFADDR, ...): %m");
++		if(!error_flag)
++		{
++			log_error("ioctl(s, SIOCGIFADDR, ...): %m");
++			error_flag = 1;
++		}
++
+ 		close(s);
+ 		return -1;
+ 	}
+-        
++
++        error_flag = 0;
+ 	*addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
+ 
+ 	close(s);

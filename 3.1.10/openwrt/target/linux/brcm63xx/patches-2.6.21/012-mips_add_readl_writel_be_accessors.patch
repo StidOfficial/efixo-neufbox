@@ -1,0 +1,12 @@
+--- a/include/asm-mips/io.h
++++ b/include/asm-mips/io.h
+@@ -435,6 +435,9 @@ __BUILDIO(q, u64)
+ #define readl_relaxed			readl
+ #define readq_relaxed			readq
+ 
++#define readl_be(addr)                 be32_to_cpu(__raw_readl((__force unsigned *)(addr)))
++#define writel_be(val, addr)           __raw_writel(cpu_to_be32((val)), (__force unsigned *)(addr))
++
+ /*
+  * Some code tests for these symbols
+  */

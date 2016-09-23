@@ -1,0 +1,12 @@
+--- a/net/sched/sch_generic.c
++++ b/net/sched/sch_generic.c
+@@ -93,6 +93,9 @@ static inline int qdisc_restart(struct n
+ 	struct Qdisc *q = dev->qdisc;
+ 	struct sk_buff *skb;
+ 
++	if(q == NULL) 
++		return 0;
++
+ 	/* Dequeue packet */
+ 	if (((skb = dev->gso_skb)) || ((skb = q->dequeue(q)))) {
+ 		unsigned nolock = (dev->features & NETIF_F_LLTX);

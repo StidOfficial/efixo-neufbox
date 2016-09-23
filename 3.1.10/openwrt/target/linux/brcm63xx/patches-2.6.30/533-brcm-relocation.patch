@@ -1,0 +1,218 @@
+--- a/kernel/module.c
++++ b/kernel/module.c
+@@ -66,6 +66,39 @@
+ /* If this is set, the section belongs in the init part of the module */
+ #define INIT_OFFSET_MASK (1UL << (BITS_PER_LONG-1))
+ 
++/*
++** These are pointers to memory chunks allocated for the DSP module. The memory is allocated in
++** start_kernel() during initialization. 
++*/
++extern void *dsp_core;
++extern void *dsp_init;
++
++/*
++** These are pointers to memory chunks allocated for the FAP module. The memory is allocated in
++** start_kernel() during initialization. 
++*/
++extern void *fap_core;
++extern void *fap_init;
++
++/* Size of the DSP core and init buffers. */
++static unsigned long dsp_core_size;
++static unsigned long dsp_init_size;
++
++/*
++ * is_dsp_module - is this the DSP module?
++ * @addr: the module to check.
++ */
++#define is_dsp_module(mod) (strcmp(mod->name, "dspdd") == 0)
++#define is_fap_module(mod) (strcmp(mod->name, "bcmfap") == 0)
++
++/*
++ * is_dsp_module_address - is this address inside the DSP module?
++ * @addr: the address to check.
++ */
++#define is_dsp_module_address(addr) \
++	(dsp_core && ((unsigned long*)addr >= (unsigned long*)dsp_core) && ((unsigned long*)addr < ((unsigned long*)dsp_core) + dsp_core_size)) || \
++	(dsp_init && ((unsigned long*)addr >= (unsigned long*)dsp_init) && ((unsigned long*)addr < ((unsigned long*)dsp_init) + dsp_init_size))
++
+ /* List of modules, protected by module_mutex or preempt_disable
+  * (delete uses stop_machine/add uses RCU list operations). */
+ DEFINE_MUTEX(module_mutex);
+@@ -804,42 +837,46 @@ SYSCALL_DEFINE2(delete_module, const cha
+ 		goto out;
+ 	}
+ 
+-	if (!list_empty(&mod->modules_which_use_me)) {
+-		/* Other modules depend on us: get rid of them first. */
+-		ret = -EWOULDBLOCK;
+-		goto out;
+-	}
+-
+-	/* Doing init or already dying? */
+-	if (mod->state != MODULE_STATE_LIVE) {
+-		/* FIXME: if (force), slam module count and wake up
+-                   waiter --RR */
+-		DEBUGP("%s already dying\n", mod->name);
+-		ret = -EBUSY;
+-		goto out;
+-	}
++	if (!(is_dsp_module(mod) || is_fap_module(mod))) {
++		if (!list_empty(&mod->modules_which_use_me)) {
++			/* Other modules depend on us: get rid of them first. */
++			ret = -EWOULDBLOCK;
++			goto out;
++		}
+ 
+-	/* If it has an init func, it must have an exit func to unload */
+-	if (mod->init && !mod->exit) {
+-		forced = try_force_unload(flags);
+-		if (!forced) {
+-			/* This module can't be removed */
++		/* Doing init or already dying? */
++		if (mod->state != MODULE_STATE_LIVE) {
++			/* FIXME: if (force), slam module count and wake up
++	                   waiter --RR */
++			DEBUGP("%s already dying\n", mod->name);
+ 			ret = -EBUSY;
+ 			goto out;
+ 		}
+-	}
+ 
+-	/* Set this up before setting mod->state */
+-	mod->waiter = current;
++		/* If it has an init func, it must have an exit func to unload */
++		if (mod->init && !mod->exit) {
++			forced = try_force_unload(flags);
++			if (!forced) {
++				/* This module can't be removed */
++				ret = -EBUSY;
++				goto out;
++			}
++		}
+ 
+-	/* Stop the machine so refcounts can't move and disable module. */
+-	ret = try_stop_module(mod, flags, &forced);
+-	if (ret != 0)
+-		goto out;
++		/* Set this up before setting mod->state */
++		mod->waiter = current;
+ 
+-	/* Never wait if forced. */
+-	if (!forced && module_refcount(mod) != 0)
+-		wait_for_zero_refcount(mod);
++		/* Stop the machine so refcounts can't move and disable module. */
++		ret = try_stop_module(mod, flags, &forced);
++		if (ret != 0)
++			goto out;
++
++		/* Never wait if forced. */
++		if (!forced && module_refcount(mod) != 0)
++			wait_for_zero_refcount(mod);
++	} else {
++		ret = 0;
++	}
+ 
+ 	mutex_unlock(&module_mutex);
+ 	/* Final destruction now noone is using it. */
+@@ -1496,7 +1533,9 @@ static void free_module(struct module *m
+ 	ftrace_release(mod->module_core, mod->core_size);
+ 
+ 	/* This may be NULL, but that's OK */
+-	module_free(mod, mod->module_init);
++	if (!(is_dsp_module(mod) || is_fap_module(mod)))
++		module_free(mod, mod->module_init);
++
+ 	kfree(mod->args);
+ 	if (mod->percpu)
+ 		percpu_modfree(mod->percpu);
+@@ -1508,7 +1547,8 @@ static void free_module(struct module *m
+ 	lockdep_free_key_range(mod->module_core, mod->core_size);
+ 
+ 	/* Finally, free the core (containing the module structure) */
+-	module_free(mod, mod->module_core);
++	if (!(is_dsp_module(mod) || is_fap_module(mod)))
++		module_free(mod, mod->module_core);
+ }
+ 
+ void *__symbol_get(const char *symbol)
+@@ -2052,7 +2092,16 @@ static noinline struct module *load_modu
+ 	layout_sections(mod, hdr, sechdrs, secstrings);
+ 
+ 	/* Do the allocs. */
+-	ptr = module_alloc_update_bounds(mod->core_size);
++	if (is_dsp_module(mod)) {
++		ptr = dsp_core;
++		dsp_core_size = dsp_core ? mod->core_size : 0;
++	}
++	else if (is_fap_module(mod)) {
++            ptr = fap_core;
++        } else {
++		ptr = module_alloc_update_bounds(mod->core_size);
++	}
++
+ 	if (!ptr) {
+ 		err = -ENOMEM;
+ 		goto free_percpu;
+@@ -2060,7 +2109,15 @@ static noinline struct module *load_modu
+ 	memset(ptr, 0, mod->core_size);
+ 	mod->module_core = ptr;
+ 
+-	ptr = module_alloc_update_bounds(mod->init_size);
++	if (is_dsp_module(mod)) {
++		ptr = dsp_init;
++		dsp_init_size = dsp_init ? mod->init_size : 0;
++	} else if (is_fap_module(mod)) {
++		ptr = fap_init;
++        } else {
++		ptr = module_alloc_update_bounds(mod->init_size);
++	}
++
+ 	if (!ptr && mod->init_size) {
+ 		err = -ENOMEM;
+ 		goto free_core;
+@@ -2312,9 +2369,11 @@ static noinline struct module *load_modu
+  free_init:
+ 	percpu_modfree(mod->refptr);
+ #endif
+-	module_free(mod, mod->module_init);
++	if (!(is_dsp_module(mod) || is_fap_module(mod)))
++		module_free(mod, mod->module_init);
+  free_core:
+-	module_free(mod, mod->module_core);
++	if (!(is_dsp_module(mod) || is_fap_module(mod)))
++		module_free(mod, mod->module_core);
+ 	/* mod will be freed with core. Don't access it beyond this line! */
+  free_percpu:
+ 	if (percpu)
+@@ -2371,7 +2430,8 @@ SYSCALL_DEFINE3(init_module, void __user
+ 		blocking_notifier_call_chain(&module_notify_list,
+ 					     MODULE_STATE_GOING, mod);
+ 		mutex_lock(&module_mutex);
+-		free_module(mod);
++		if (!(is_dsp_module(mod) || is_fap_module(mod)))
++			free_module(mod);
+ 		mutex_unlock(&module_mutex);
+ 		wake_up(&module_wq);
+ 		return ret;
+@@ -2397,7 +2457,8 @@ SYSCALL_DEFINE3(init_module, void __user
+ 	mutex_lock(&module_mutex);
+ 	/* Drop initial reference. */
+ 	module_put(mod);
+-	module_free(mod, mod->module_init);
++	if (!(is_dsp_module(mod) || is_fap_module(mod)))
++		module_free(mod, mod->module_init);
+ 	mod->module_init = NULL;
+ 	mod->init_size = 0;
+ 	mod->init_text_size = 0;
+@@ -2784,7 +2845,8 @@ struct module *__module_address(unsigned
+ {
+ 	struct module *mod;
+ 
+-	if (addr < module_addr_min || addr > module_addr_max)
++	if ((!is_dsp_module_address(addr)) &&
++			(addr < module_addr_min || addr > module_addr_max))
+ 		return NULL;
+ 
+ 	list_for_each_entry_rcu(mod, &modules, list)

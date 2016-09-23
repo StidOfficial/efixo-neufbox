@@ -1,0 +1,144 @@
+
+config efixo-nbctl
+	bool "Efixo nbctl"
+	depends on PACKAGE_efixo-libnbd
+	help
+	  "CLI nbd control"
+
+config efixo-serialization
+	bool"Efixo serialization"
+	depends on PACKAGE_efixo-libnbd
+	help
+	  "CLI neubfox serialization tool"
+
+config efixo-switch-robo
+	bool "Efixo switch-robo"
+	depends on PACKAGE_efixo-libnbd
+	help
+	  "CLI switch robo control"
+
+menuconfig efixo-nbd-plugins
+	bool "nbd plugins"
+	depends on PACKAGE_efixo-nbd
+
+config efixo-nbd-plugin-event
+	bool "event plugin" if efixo-nbd-plugins
+	default y
+
+config efixo-nbd-plugin-status
+	bool "status plugin" if efixo-nbd-plugins
+	default y
+
+config efixo-nbd-plugin-nvram
+	bool "nvram plugin" if efixo-nbd-plugins
+	default y
+
+config CONFIG_VERSION
+	string "System config version" if efixo-nbd-plugin-nvram
+
+config SSID_PREFIX
+	string "SSID prefix"
+	default "SFR"
+
+config HOTSPOT_AUTOCONF_FILE
+	string "Hotspot default autconf file"
+	default "hotspot.xml"
+
+config SAMBA_SERVICE_NAME
+	string "Samba Service Name"
+	default "NeufBox"
+
+config UPNPAV_SERVICE_NAME
+	string "UpnpAV Service Name"
+	default "NeufBox upnp-Av"
+	
+config VSSTEST_CLI_STRING
+	string "VSS ring test CLI string"
+	default "Neufbox Test"
+
+config efixo-nbd-plugin-leds
+	bool "leds plugin" if efixo-nbd-plugins
+	default y
+
+config efixo-nbd-plugin-nbctl
+	bool "nbctl plugin" if efixo-nbd-plugins
+	default y
+
+config efixo-nbd-plugin-autoconf
+	bool "autoconf plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-spy
+	bool "spy plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-firewall
+	bool "firewall plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-nat
+	bool "nat plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-uroute
+	bool "uroute plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-uping
+	bool "ping plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-utraceroute
+	bool "traceroute plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-lan
+	bool "lan plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-wlan
+	bool "wlan plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-hotspot
+	bool "hotspot plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-voip
+	bool "voip plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-stb
+	bool "stb plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-igmp
+	bool "igmp plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-backup3g
+	bool "backup3g plugin" if efixo-nbd-plugins
+	depends on @neufbox_net_infra_gprs
+
+config efixo-nbd-plugin-dsl
+	bool "dsl plugin" if efixo-nbd-plugins
+	depends on @neufbox_net_infra_adsl
+
+config efixo-nbd-plugin-plc
+	bool "plc plugin" if efixo-nbd-plugins
+	depends on PACKAGE_efixo-nbd
+
+config efixo-nbd-plugin-sfp
+	bool "sfp plugin" if efixo-nbd-plugins
+	depends on @neufbox_net_infra_ftth && @TARGET_octeon
+
+config efixo-nbd-plugin-eco
+	bool "eco plugin" if efixo-nbd-plugins
+	depends on @PACKAGE_efixo-nbd
+
+config efixo-nbd-plugin-vSStest
+	bool "vSStest plugin" if efixo-nbd-plugins
+	depends on (@TARGET_brcm63xx || @TARGET_octeon)
+
+config efixo-nbd-plugin-disk
+	bool "disk plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-ddnsctl
+	bool "ddnsctl plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-sambactl
+	bool "sambactl plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-usharectl
+	bool "usharectl plugin" if efixo-nbd-plugins
+
+config efixo-nbd-plugin-printer
+        bool "printer plugin" if efixo-nbd-plugins
+

@@ -1,0 +1,14 @@
+--- a/src/igmp.c
++++ b/src/igmp.c
+@@ -72,7 +72,11 @@ void initIgmp() {
+      */
+     ip->ip_v   = IPVERSION;
+     ip->ip_hl  = sizeof(struct ip) >> 2;
++#ifdef TV_DSCP
++    ip->ip_tos = (TV_DSCP << 2);
++#else
+     ip->ip_tos = 0xc0;      /* Internet Control */
++#endif
+     ip->ip_ttl = MAXTTL;    /* applies to unicasts only */
+     ip->ip_p   = IPPROTO_IGMP;
+ 

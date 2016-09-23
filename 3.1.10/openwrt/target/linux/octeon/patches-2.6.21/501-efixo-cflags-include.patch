@@ -1,0 +1,11 @@
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -612,7 +612,7 @@ load-$(CONFIG_TOSHIBA_RBTX4938) += 0xfff
+ #
+ core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/
+ core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/gpl-executive/
+-cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= -Iinclude/asm-mips/mach-cavium-octeon -I${OCTEON_ROOT}/target/include
++cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= -Iinclude/asm-mips/mach-cavium-octeon -Iinclude/asm-mips/mach-cavium-octeon/gpl-executive
+ cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= $(OCTEON_CPPFLAGS_GLOBAL_ADD)
+ ifdef CONFIG_CAVIUM_OCTEON_2ND_KERNEL
+ load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff84100000

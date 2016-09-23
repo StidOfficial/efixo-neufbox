@@ -1,0 +1,10 @@
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -847,6 +847,7 @@ config CAVIUM_OCTEON_REFERENCE_BOARD
+ 	select ISA
+ 	select GENERIC_ISA_DMA
+ 	select ARCH_MAY_HAVE_PC_FDC
++	select HAVE_GPIO_LIB
+ 	help
+ 	  This option supports all of the Octeon reference boards from Cavium
+ 	  Networks. It builds a kernel that dynamically determines the Octeon

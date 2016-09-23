@@ -1,0 +1,11 @@
+--- a/drivers/net/veth.c
++++ b/drivers/net/veth.c
+@@ -197,6 +197,8 @@ static __init int veth_init(void)
+ 		goto err;
+ 	}
+ 
++	/* vth0: do not forward WAN packet */
++	dev->priv_flags |= IFF_WANDEV;
+ 	memcpy(peer->dev_addr, dev->dev_addr, sizeof(peer->dev_addr));
+ 	peer->dev_addr[5] = 0x56;
+ 

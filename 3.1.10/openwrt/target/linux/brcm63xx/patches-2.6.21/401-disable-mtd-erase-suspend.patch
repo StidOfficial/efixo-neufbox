@@ -1,0 +1,12 @@
+--- a/drivers/mtd/chips/cfi_cmdset_0002.c
++++ b/drivers/mtd/chips/cfi_cmdset_0002.c
+@@ -589,6 +589,9 @@ static int get_chip(struct map_info *map
+ 		return 0;
+ 
+ 	case FL_ERASING:
++		/* neufbox: never suspend on erasing */		
++		goto sleep;
++
+ 		if (mode == FL_WRITING) /* FIXME: Erase-suspend-program appears broken. */
+ 			goto sleep;
+ 

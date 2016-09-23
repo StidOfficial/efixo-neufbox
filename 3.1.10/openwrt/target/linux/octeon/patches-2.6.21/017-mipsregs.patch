@@ -1,0 +1,35 @@
+--- a/include/asm-mips/mipsregs.h
++++ b/include/asm-mips/mipsregs.h
+@@ -572,14 +572,31 @@
+ #define MIPS_FPIR_L		(_ULCAST_(1) << 21)
+ #define MIPS_FPIR_F64		(_ULCAST_(1) << 22)
+ 
++#define TOP_OF_CVMSEG_STORE        (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE*128-32768)
+ /*
+  * These defines are used on Octeon to implement fast access to the thread pointer
+  * from userspace. Octeon uses a 64bit location in CVMSEG to store the thread pointer
+  * for quick access. 
+  */
+ #ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
+-#define FAST_ACCESS_THREAD_OFFSET       CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE*128-8-32768
++#define FAST_ACCESS_THREAD_OFFSET       (TOP_OF_CVMSEG_STORE-8)
+ #define FAST_ACCESS_THREAD_REGISTER     *(unsigned long *)(FAST_ACCESS_THREAD_OFFSET)
++#else
++#define FAST_ACCESS_THREAD_OFFSET       TOP_OF_CVMSEG_STORE
++#endif
++
++/*
++ * These defines are used on Octeon to give the kernel access to CVMSEG locations to
++ * improve performance. The kernel may use this space much like it normally uses
++ * K0 and K1 in the main register file - as a temporary store.
++ *
++ * Put it as high as possible in CVMSEG space, but below THREAD_POINTER
++ */
++#ifdef CONFIG_TEMPORARY_SCRATCHPAD_FOR_KERNEL
++#define TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(i)    (FAST_ACCESS_THREAD_OFFSET-(8*(CONFIG_TEMPORARY_SCRATCHPAD_FOR_KERNEL-(i))))
++#define TEMPORARY_SCRATCHPAD_FOR_KERNEL_REGISTER(i)  *(unsigned long *)(TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(i))
++#else
++#define TEMPORARY_SCRATCHPAD_FOR_KERNEL_OFFSET(i)    FAST_ACCESS_THREAD_OFFSET
+ #endif
+ 
+ #ifndef __ASSEMBLY__

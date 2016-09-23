@@ -1,0 +1,22 @@
+--- a/drivers/input/misc/Kconfig
++++ b/drivers/input/misc/Kconfig
+@@ -266,4 +266,12 @@ config INPUT_GPIO_BUTTONS
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called gpio-buttons.
+ 
++config INPUT_NEUFBOX_EVENTS
++	tristate "neufbox events interface"
++	help
++	  neufbox events device.
++
++	  To compile this driver as a module, choose M here: the
++	  module will be called neufbox-events.
++
+ endif
+--- a/drivers/input/misc/Makefile
++++ b/drivers/input/misc/Makefile
+@@ -25,3 +25,4 @@ obj-$(CONFIG_INPUT_UINPUT)		+= uinput.o
+ obj-$(CONFIG_INPUT_WISTRON_BTNS)	+= wistron_btns.o
+ obj-$(CONFIG_INPUT_YEALINK)		+= yealink.o
+ obj-$(CONFIG_INPUT_GPIO_BUTTONS)	+= gpio_buttons.o
++obj-$(CONFIG_INPUT_NEUFBOX_EVENTS)	+= neufbox_events.o

@@ -1,0 +1,25 @@
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -3154,6 +3154,12 @@ config PPPOATM
+ 	  which can lead to bad results if the ATM peer loses state and
+ 	  changes its encapsulation unilaterally.
+ 
++config BCM_XTMRT
++	tristate "Broadcom XTMRT"
++	depends on BCM63XX
++	help
++	  Support for Broadcom xtmrt
++
+ config PPPOL2TP
+ 	tristate "PPP over L2TP (EXPERIMENTAL)"
+ 	depends on EXPERIMENTAL && PPP && INET
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -239,6 +239,7 @@ obj-$(CONFIG_ETHOC) += ethoc.o
+ obj-$(CONFIG_XTENSA_XT2000_SONIC) += xtsonic.o
+ 
+ obj-$(CONFIG_DNET) += dnet.o
++obj-$(CONFIG_BCM_XTMRT) += bcmxtmrt.o
+ obj-$(CONFIG_MACB) += macb.o
+ 
+ obj-$(CONFIG_ARM) += arm/

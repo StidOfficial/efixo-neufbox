@@ -1,0 +1,14 @@
+--- a/crypto/crypto_null.c
++++ b/crypto/crypto_null.c
+@@ -24,7 +24,11 @@
+ #include <linux/string.h>
+ 
+ #define NULL_KEY_SIZE		0
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define NULL_BLOCK_SIZE		4   /* Using a 1 byte block creates absurd overhead */
++#else
+ #define NULL_BLOCK_SIZE		1
++#endif
+ #define NULL_DIGEST_SIZE	0
+ 
+ static int null_compress(struct crypto_tfm *tfm, const u8 *src,

@@ -1,0 +1,222 @@
+AC_PREREQ(2.50)
+AC_INIT(nbd, 3.0, miguel.gaio@efixo.com)
+AC_CONFIG_HEADER([config.h])
+AM_INIT_AUTOMAKE([foreign])
+AC_PROG_LIBTOOL
+
+# Checks for programs.
+AC_PROG_CC
+AC_PROG_INSTALL
+AC_PROG_LN_S
+
+# Checks for libraries.
+
+# Checks for header files.
+
+# Checks for typedefs, structures, and compiler characteristics.
+
+# Checks for library functions.
+
+AC_ARG_ENABLE(event-manager,
+	[  --enable-event-manager     Enable event manager. [yes]],
+	[ AC_DEFINE(HAVE_EVENT_MANAGER,1,Enable event manager) ]
+	[case "$enableval" in y | yes) event_manager=yes;; *) unset event_manager;; esac]
+)
+AM_CONDITIONAL(EVENT_MANAGER,[test x"$event_manager" = x"yes"])
+
+# plugins
+AC_ARG_ENABLE(event-plugin,
+	[  --enable-event-plugin     Enable event plugin. [yes]],
+	[ AC_DEFINE(HAVE_EVENT_PLUGIN,1,Enable event plugin) ]
+	[case "$enableval" in y | yes) event_plugin=yes;; *) unset event_plugin;; esac]
+)
+AM_CONDITIONAL(EVENT_PLUGIN,[test x"$event_plugin" = x"yes"])
+
+AC_ARG_ENABLE(status-plugin,
+	[  --enable-status-plugin     Enable status plugin. [yes]],
+	[ AC_DEFINE(HAVE_STATUS_PLUGIN,1,Enable status plugin) ]
+	[case "$enableval" in y | yes) status_plugin=yes;; *) unset status_plugin;; esac]
+)
+AM_CONDITIONAL(STATUS_PLUGIN,[test x"$status_plugin" = x"yes"])
+
+AC_ARG_ENABLE(nvram-plugin,
+	[  --enable-nvram-plugin     Enable nvram plugin. [yes]],
+	[ AC_DEFINE(HAVE_NVRAM_PLUGIN,1,Enable nvram plugin) ]
+	[case "$enableval" in y | yes) nvram_plugin=yes;; *) unset nvram_plugin;; esac]
+)
+AM_CONDITIONAL(NVRAM_PLUGIN,[test x"$nvram_plugin" = x"yes"])
+
+AC_ARG_ENABLE(leds-plugin,
+	[  --enable-leds-plugin     Enable leds plugin. [yes]],
+	[ AC_DEFINE(HAVE_LEDS_PLUGIN,1,Enable leds plugin) ]
+	[case "$enableval" in y | yes) leds_plugin=yes;; *) unset leds_plugin;; esac]
+)
+AM_CONDITIONAL(LEDS_PLUGIN,[test x"$leds_plugin" = x"yes"])
+
+AC_ARG_ENABLE(autoconf-plugin,
+	[  --enable-autoconf-plugin     Enable autoconf plugin. [yes]],
+	[ AC_DEFINE(HAVE_AUTOCONF_PLUGIN,1,Enable autoconf plugin) ]
+	[case "$enableval" in y | yes) autoconf_plugin=yes;; *) unset autoconf_plugin;; esac]
+)
+AM_CONDITIONAL(AUTOCONF_PLUGIN,[test x"$autoconf_plugin" = x"yes"])
+
+AC_ARG_ENABLE(nbctl-plugin,
+	[  --enable-nbctl-plugin     Enable nbctl plugin. [yes]],
+	[ AC_DEFINE(HAVE_NBCTL_PLUGIN,1,Enable nbctl plugin) ]
+	[case "$enableval" in y | yes) nbctl_plugin=yes;; *) unset nbctl_plugin;; esac]
+)
+AM_CONDITIONAL(NBCTL_PLUGIN,[test x"$nbctl_plugin" = x"yes"])
+
+AC_ARG_ENABLE(spy-plugin,
+	[  --enable-spy-plugin     Enable spy plugin. [yes]],
+	[ AC_DEFINE(HAVE_SPY_PLUGIN,1,Enable spy plugin) ]
+	[case "$enableval" in y | yes) spy_plugin=yes;; *) unset spy_plugin;; esac]
+)
+AM_CONDITIONAL(SPY_PLUGIN,[test x"$spy_plugin" = x"yes"])
+
+AC_ARG_ENABLE(firewall-plugin,
+	[  --enable-firewall-plugin     Enable firewall plugin. [yes]],
+	[ AC_DEFINE(HAVE_FIREWALL_PLUGIN,1,Enable firewall plugin) ]
+	[case "$enableval" in y | yes) firewall_plugin=yes;; *) unset firewall_plugin;; esac]
+)
+AM_CONDITIONAL(FIREWALL_PLUGIN,[test x"$firewall_plugin" = x"yes"])
+
+AC_ARG_ENABLE(nat-plugin,
+	[  --enable-nat-plugin     Enable nat plugin. [yes]],
+	[ AC_DEFINE(HAVE_NAT_PLUGIN,1,Enable nat plugin) ]
+	[case "$enableval" in y | yes) nat_plugin=yes;; *) unset nat_plugin;; esac]
+)
+AM_CONDITIONAL(NAT_PLUGIN,[test x"$nat_plugin" = x"yes"])
+
+AC_ARG_ENABLE(uroute-plugin,
+	[  --enable-uroute-plugin     Enable uroute plugin. [yes]],
+	[ AC_DEFINE(HAVE_UROUTE_PLUGIN,1,Enable uroute plugin) ]
+	[case "$enableval" in y | yes) uroute_plugin=yes;; *) unset uroute_plugin;; esac]
+)
+AM_CONDITIONAL(UROUTE_PLUGIN,[test x"$uroute_plugin" = x"yes"])
+
+AC_ARG_ENABLE(uping-plugin,
+	[  --enable-uping-plugin     Enable uping plugin. [yes]],
+	[ AC_DEFINE(HAVE_UPING_PLUGIN,1,Enable uping plugin) ]
+	[case "$enableval" in y | yes) uping_plugin=yes;; *) unset uping_plugin;; esac]
+)
+AM_CONDITIONAL(UPING_PLUGIN,[test x"$uping_plugin" = x"yes"])
+
+AC_ARG_ENABLE(utraceroute-plugin,
+	[  --enable-utraceroute-plugin     Enable utraceroute plugin. [yes]],
+	[ AC_DEFINE(HAVE_UTRACEROUTE_PLUGIN,1,Enable utraceroute plugin) ]
+	[case "$enableval" in y | yes) utraceroute_plugin=yes;; *) unset utraceroute_plugin;; esac]
+)
+AM_CONDITIONAL(UTRACEROUTE_PLUGIN,[test x"$utraceroute_plugin" = x"yes"])
+
+AC_ARG_ENABLE(lan-plugin,
+	[  --enable-lan-plugin     Enable lan plugin. [yes]],
+	[ AC_DEFINE(HAVE_LAN_PLUGIN,1,Enable lan plugin) ]
+	[case "$enableval" in y | yes) lan_plugin=yes;; *) unset lan_plugin;; esac]
+)
+AM_CONDITIONAL(LAN_PLUGIN,[test x"$lan_plugin" = x"yes"])
+
+AC_ARG_ENABLE(wlan-plugin,
+	[  --enable-wlan-plugin     Enable wlan plugin. [yes]],
+	[ AC_DEFINE(HAVE_WLAN_PLUGIN,1,Enable wlan plugin) ]
+	[case "$enableval" in y | yes) wlan_plugin=yes;; *) unset wlan_plugin;; esac]
+)
+AM_CONDITIONAL(WLAN_PLUGIN,[test x"$wlan_plugin" = x"yes"])
+
+AC_ARG_ENABLE(hotspot-plugin,
+	[  --enable-hotspot-plugin     Enable hotspot plugin. [yes]],
+	[ AC_DEFINE(HAVE_HOTSPOT_PLUGIN,1,Enable hotspot plugin) ]
+	[case "$enableval" in y | yes) hotspot_plugin=yes;; *) unset hotspot_plugin;; esac]
+)
+AM_CONDITIONAL(HOTSPOT_PLUGIN,[test x"$hotspot_plugin" = x"yes"])
+
+AC_ARG_ENABLE(voip-plugin,
+	[  --enable-voip-plugin     Enable voip plugin. [yes]],
+	[ AC_DEFINE(HAVE_VOIP_PLUGIN,1,Enable voip plugin) ]
+	[case "$enableval" in y | yes) voip_plugin=yes;; *) unset voip_plugin;; esac]
+)
+AM_CONDITIONAL(VOIP_PLUGIN,[test x"$voip_plugin" = x"yes"])
+
+AC_ARG_ENABLE(stb-plugin,
+	[  --enable-stb-plugin     Enable stb plugin. [yes]],
+	[ AC_DEFINE(HAVE_STB_PLUGIN,1,Enable stb plugin) ]
+	[case "$enableval" in y | yes) stb_plugin=yes;; *) unset stb_plugin;; esac]
+)
+AM_CONDITIONAL(STB_PLUGIN,[test x"$stb_plugin" = x"yes"])
+
+AC_ARG_ENABLE(igmp-plugin,
+	[  --enable-igmp-plugin     Enable igmp plugin. [yes]],
+	[ AC_DEFINE(HAVE_IGMP_PLUGIN,1,Enable igmp plugin) ]
+	[case "$enableval" in y | yes) igmp_plugin=yes;; *) unset igmp_plugin;; esac]
+)
+AM_CONDITIONAL(IGMP_PLUGIN,[test x"$igmp_plugin" = x"yes"])
+
+AC_ARG_ENABLE(backup3g-plugin,
+	[  --enable-backup3g-plugin     Enable backup3g plugin. [yes]],
+	[ AC_DEFINE(HAVE_BACKUP3G_PLUGIN,1,Enable backup3g plugin) ]
+	[case "$enableval" in y | yes) backup3g_plugin=yes;; *) unset backup3g_plugin;; esac]
+)
+AM_CONDITIONAL(BACKUP3G_PLUGIN,[test x"$backup3g_plugin" = x"yes"])
+
+AC_ARG_ENABLE(plc-plugin,
+	[  --enable-plc-plugin     Enable plc plugin. [yes]],
+	[ AC_DEFINE(HAVE_PLC_PLUGIN,1,Enable plc plugin) ]
+	[case "$enableval" in y | yes) plc_plugin=yes;; *) unset plc_plugin;; esac]
+)
+AM_CONDITIONAL(PLC_PLUGIN,[test x"$plc_plugin" = x"yes"])
+
+AC_ARG_ENABLE(dsl-plugin,
+	[  --enable-dsl-plugin     Enable dsl plugin. [yes]],
+	[ AC_DEFINE(HAVE_DSL_PLUGIN,1,Enable dsl plugin) ]
+	[case "$enableval" in y | yes) dsl_plugin=yes;; *) unset dsl_plugin;; esac]
+)
+AM_CONDITIONAL(DSL_PLUGIN,[test x"$dsl_plugin" = x"yes"])
+
+AC_ARG_ENABLE(sfp-plugin,
+	[  --enable-sfp-plugin     Enable sfp plugin. [yes]],
+	[ AC_DEFINE(HAVE_SFP_PLUGIN,1,Enable sfp plugin) ]
+	[case "$enableval" in y | yes) sfp_plugin=yes;; *) unset sfp_plugin;; esac]
+)
+AM_CONDITIONAL(SFP_PLUGIN,[test x"$sfp_plugin" = x"yes"])
+)
+AC_ARG_ENABLE(vsstest-plugin,
+	[  --enable-vsstest-plugin     Enable vsstest plugin. [yes]],
+	[ AC_DEFINE(HAVE_VSSTEST_PLUGIN,1,Enable vsstest plugin) ]
+	[case "$enableval" in y | yes) vsstest_plugin=yes;; *) unset vsstest_plugin;; esac]
+)
+AM_CONDITIONAL(VSSTEST_PLUGIN,[test x"$vsstest_plugin" = x"yes"])
+
+AC_ARG_ENABLE(disk-plugin,
+	[  --enable-disk-plugin     Enable disk plugin. [yes]],
+	[ AC_DEFINE(HAVE_DISK_PLUGIN,1,Enable disk plugin) ]
+	[case "$enableval" in y | yes) disk_plugin=yes;; *) unset disk_plugin;; esac]
+)
+AM_CONDITIONAL(DISK_PLUGIN,[test x"$disk_plugin" = x"yes"])
+
+AC_ARG_ENABLE(ddnsctl-plugin,
+	[  --enable-ddnsctl-plugin     Enable ddnsctl plugin. [yes]],
+	[ AC_DEFINE(HAVE_DDNSCTL_PLUGIN,1,Enable ddnsctl plugin) ]
+	[case "$enableval" in y | yes) ddnsctl_plugin=yes;; *) unset ddnsctl_plugin;; esac]
+)
+AM_CONDITIONAL(DDNSCTL_PLUGIN,[test x"$ddnsctl_plugin" = x"yes"])
+
+AC_ARG_ENABLE(sambactl-plugin,
+	[  --enable-sambactl-plugin     Enable sambactl plugin. [yes]],
+	[ AC_DEFINE(HAVE_SAMBACTL_PLUGIN,1,Enable sambactl plugin) ]
+	[case "$enableval" in y | yes) sambactl_plugin=yes;; *) unset sambactl_plugin;; esac]
+)
+AM_CONDITIONAL(SAMBACTL_PLUGIN,[test x"$sambactl_plugin" = x"yes"])
+
+AC_ARG_ENABLE(usharectl-plugin,
+	[  --enable-usharectl-plugin     Enable usharectl plugin. [yes]],
+	[ AC_DEFINE(HAVE_USHARECTL_PLUGIN,1,Enable usharectl plugin) ]
+	[case "$enableval" in y | yes) usharectl_plugin=yes;; *) unset usharectl_plugin;; esac]
+)
+AM_CONDITIONAL(USHARECTL_PLUGIN,[test x"$usharectl_plugin" = x"yes"])
+
+
+AC_CONFIG_FILES([Makefile
+                 client/Makefile
+                 lib/Makefile
+                 server/Makefile])
+AC_OUTPUT

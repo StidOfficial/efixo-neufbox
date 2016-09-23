@@ -1,0 +1,19 @@
+--- a/include/linux/if.h
++++ b/include/linux/if.h
+@@ -68,6 +68,16 @@
+ #define IFF_MASTER_ARPMON 0x100		/* bonding master, ARP mon in use */
+ #define IFF_WAN_HDLC	0x200		/* WAN HDLC device		*/
+ 
++#if defined(CONFIG_BCM63XX)
++#define IFF_HW_SWITCH  0x400
++#define IFF_RSMUX      0x800             /* smux real interface          */
++#define IFF_OSMUX      0x1000             /* smux overlay interface       */
++#define IFF_WANDEV     0x2000             /* avoid WAN bridge traffic leaking */
++#define IFF_BCM_VLAN   0x4000            /* Broadcom VLAN Interface */
++#define IFF_WLANDEV    0x8000		/* Broadcom WLAN Interface */
++#endif
++
++
+ #define IF_GET_IFACE	0x0001		/* for querying only */
+ #define IF_GET_PROTO	0x0002
+ 

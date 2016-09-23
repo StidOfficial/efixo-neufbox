@@ -1,0 +1,11 @@
+--- a/upnp/src/genlib/miniserver/miniserver.c
++++ b/upnp/src/genlib/miniserver/miniserver.c
+@@ -526,7 +526,7 @@ static int get_miniserver_sockets(
+ 	unsigned short actual_port6;
+ #endif
+ 	int ret_code;
+-	int reuseaddr_on = 0;
++	int reuseaddr_on = 1;
+ 	int sockError = UPNP_E_SUCCESS;
+ 	int errCode = 0;
+ 

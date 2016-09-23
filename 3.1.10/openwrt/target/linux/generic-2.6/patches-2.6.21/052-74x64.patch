@@ -1,0 +1,299 @@
+From: Miguel Gaio <miguel.gaio@efixo.com>
+
+This patch adds support for generic 74x164 serial-in/parallel-out 8-bits
+shift register. This driver can be used as a GPIO output expander.
+
+Signed-off-by: Miguel Gaio <miguel.gaio@efixo.com>
+Signed-off-by: Juhos Gabor <juhosg@openwrt.org>
+Signed-off-by: Florian Fainelli <florian@openwrt.org>
+---
+Changes since v1:
+- renamed nxp_ to gen_ since this driver is generic to all 74HC164 chips
+- added comment on this driver not handling the 74HC164 daisy-chaining
+- renamed misused GPIO expanders to Shift registers
+
+Changes since v2:
+- rename 74hc164 to 74x164
+
+--- /dev/null
++++ b/drivers/gpio/74x164.c
+@@ -0,0 +1,228 @@
++/*
++ *  74Hx164 - Generic serial-in/parallel-out 8-bits shift register GPIO driver
++ *
++ *  Copyright (C) 2010 Gabor Juhos <juhosg@openwrt.org>
++ *  Copyright (C) 2010 Miguel Gaio <miguel.gaio@efixo.com>
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License version 2 as
++ *  published by the Free Software Foundation.
++ */
++
++#include <linux/module.h>
++#include <linux/init.h>
++#include <linux/slab.h>
++#include <linux/gpio.h>
++#include <linux/bitops.h>
++#include <linux/platform_device.h>
++#include <linux/74x164.h>
++
++#define GEN_74X164_MAX_GPIOS   32
++
++struct gen_74x164_chip {
++       struct device           *parent;
++       struct gpio_chip        gpio_chip;
++       struct mutex            lock;
++       long                    mask;
++};
++
++static void gen_74x164_set_value(struct gpio_chip *, unsigned, int);
++
++static struct gen_74x164_chip *gpio_to_chip(struct gpio_chip *gc)
++{
++       return container_of(gc, struct gen_74x164_chip, gpio_chip);
++}
++
++static int gen_74x164_direction_input(struct gpio_chip *gc, unsigned offset)
++{
++       WARN_ON(1);
++       return -EINVAL;
++}
++
++static int gen_74x164_direction_output(struct gpio_chip *gc,
++                                       unsigned offset, int val)
++{
++       gen_74x164_set_value(gc, offset, val);
++       return 0;
++}
++
++static int gen_74x164_get_value(struct gpio_chip *gc, unsigned offset)
++{
++       struct gen_74x164_chip *chip = gpio_to_chip(gc);
++       int ret;
++
++       mutex_lock(&chip->lock);
++       ret = test_bit(offset, &chip->mask);
++       mutex_unlock(&chip->lock);
++
++       return ret;
++}
++
++static void gen_74x164_set_value(struct gpio_chip *gc,
++                                 unsigned offset, int val)
++{
++       struct gen_74x164_chip *chip;
++       struct gen_74x164_platform_data *pdata;
++       long mask;
++       int refresh;
++       int i;
++
++       chip = gpio_to_chip(gc);
++       pdata = chip->parent->platform_data;
++
++       mutex_lock(&chip->lock);
++       if (val)
++               refresh = (test_and_set_bit(offset, &chip->mask) != val);
++       else
++               refresh = (test_and_clear_bit(offset, &chip->mask) != val);
++
++       if (refresh) {
++               mask = chip->mask;
++               for (i = pdata->ngpio - 1; i >= 0; --i) {
++                       gpio_set_value(pdata->gpio_pin_data, test_bit(i, &mask));
++                       gpio_set_value(pdata->gpio_pin_clk, 1);
++                       gpio_set_value(pdata->gpio_pin_clk, 0);
++               }
++       }
++       mutex_unlock(&chip->lock);
++}
++
++static int __devinit gen_74x164_probe(struct platform_device *pdev)
++{
++       struct gen_74x164_platform_data *pdata;
++       struct gen_74x164_chip *chip;
++       struct gpio_chip *gc;
++       int err;
++
++       pdata = pdev->dev.platform_data;
++       if (pdata == NULL) {
++               dev_dbg(&pdev->dev, "no platform data specified\n");
++               return -EINVAL;
++       }
++
++       if (pdata->ngpio > GEN_74X164_MAX_GPIOS) {
++               dev_err(&pdev->dev, "invalid gpio count %u\n", pdata->ngpio);
++               return -EINVAL;
++       }
++
++       chip = kzalloc(sizeof(struct gen_74x164_chip), GFP_KERNEL);
++       if (chip == NULL) {
++               dev_err(&pdev->dev, "no memory for private data\n");
++               return -ENOMEM;
++       }
++
++       err = gpio_request(pdata->gpio_pin_clk, pdev->name);
++       if (err) {
++               dev_err(&pdev->dev, "unable to claim gpio %u, err=%d\n",
++                       pdata->gpio_pin_clk, err);
++               goto err_free_chip;
++       }
++
++       err = gpio_request(pdata->gpio_pin_data, pdev->name);
++       if (err) {
++               dev_err(&pdev->dev, "unable to claim gpio %u, err=%d\n",
++                       pdata->gpio_pin_data, err);
++               goto err_free_clk;
++       }
++
++       err = gpio_direction_output(pdata->gpio_pin_clk, 0);
++       if (err) {
++               dev_err(&pdev->dev,
++                       "unable to set direction of gpio %u, err=%d\n",
++                       pdata->gpio_pin_clk, err);
++               goto err_free_data;
++       }
++
++       err = gpio_direction_output(pdata->gpio_pin_data, 0);
++       if (err) {
++               dev_err(&pdev->dev,
++                       "unable to set direction of gpio %u, err=%d\n",
++                       pdata->gpio_pin_data, err);
++               goto err_free_data;
++       }
++
++       chip->parent = &pdev->dev;
++       mutex_init(&chip->lock);
++
++       gc = &chip->gpio_chip;
++
++       gc->direction_input  = gen_74x164_direction_input;
++       gc->direction_output = gen_74x164_direction_output;
++       gc->get = gen_74x164_get_value;
++       gc->set = gen_74x164_set_value;
++       gc->can_sleep = 1;
++
++       gc->base = pdata->gpio_base;
++       gc->ngpio = pdata->ngpio;
++       gc->label = pdev->name;
++
++       err = gpiochip_add(&chip->gpio_chip);
++       if (err) {
++               dev_err(&pdev->dev, "unable to add gpio chip, err=%d\n", err);
++               goto err_free_data;
++       }
++
++       platform_set_drvdata(pdev, chip);
++       return 0;
++
++err_free_data:
++       gpio_free(pdata->gpio_pin_data);
++err_free_clk:
++       gpio_free(pdata->gpio_pin_clk);
++err_free_chip:
++       kfree(chip);
++       return err;
++}
++
++static int gen_74x164_remove(struct platform_device *pdev)
++{
++       struct gen_74x164_chip *chip = platform_get_drvdata(pdev);
++       struct gen_74x164_platform_data *pdata = pdev->dev.platform_data;
++
++       if (chip) {
++               int err;
++
++               err = gpiochip_remove(&chip->gpio_chip);
++               if (err) {
++                       dev_err(&pdev->dev,
++                               "unable to remove gpio chip, err=%d\n",
++                               err);
++                       return err;
++               }
++
++               gpio_free(pdata->gpio_pin_clk);
++               gpio_free(pdata->gpio_pin_data);
++
++               kfree(chip);
++               platform_set_drvdata(pdev, NULL);
++       }
++
++       return 0;
++}
++
++static struct platform_driver gen_74x164_driver = {
++       .probe          = gen_74x164_probe,
++       .remove         = __devexit_p(gen_74x164_remove),
++       .driver = {
++               .name   = GEN_74X164_DRIVER_NAME,
++               .owner  = THIS_MODULE,
++       },
++};
++
++static int __init gen_74x164_init(void)
++{
++       return platform_driver_register(&gen_74x164_driver);
++}
++subsys_initcall(gen_74x164_init);
++
++static void __exit gen_74x164_exit(void)
++{
++       platform_driver_unregister(&gen_74x164_driver);
++}
++module_exit(gen_74x164_exit);
++
++MODULE_AUTHOR("Gabor Juhos <juhosg@openwrt.org>");
++MODULE_AUTHOR("Miguel Gaio <miguel.gaio@efixo.com>");
++MODULE_DESCRIPTION("GPIO expander driver for 74X164 8-bits shift register");
++MODULE_LICENSE("GPL v2");
++MODULE_ALIAS("platform:" GEN_74X164_DRIVER_NAME);
+--- a/drivers/gpio/Kconfig
++++ b/drivers/gpio/Kconfig
+@@ -70,4 +70,13 @@ config GPIO_MCP23S08
+ 	  SPI driver for Microchip MCP23S08 I/O expander.  This provides
+ 	  a GPIO interface supporting inputs and outputs.
+ 
++comment "Shift registers:"
++
++config GPIO_74X164
++       tristate "74x164 serial-in/parallel-out 8-bits shift register"
++       help
++         Platform driver for 74x164 compatible serial-in/parallel-out
++         8-outputs shift registers. This driver can be used to provide access
++	 to more gpio outputs.
++
+ endmenu
+--- a/drivers/gpio/Makefile
++++ b/drivers/gpio/Makefile
+@@ -5,5 +5,6 @@ ccflags-$(CONFIG_DEBUG_GPIO)	+= -DDEBUG
+ obj-$(CONFIG_HAVE_GPIO_LIB)	+= gpiolib.o
+ 
+ obj-$(CONFIG_GPIO_MCP23S08)	+= mcp23s08.o
++obj-$(CONFIG_GPIO_74X164)	+= 74x164.o
+ obj-$(CONFIG_GPIO_PCA953X)	+= pca953x.o
+ obj-$(CONFIG_GPIO_PCF857X)	+= pcf857x.o
+--- /dev/null
++++ b/include/linux/74x164.h
+@@ -0,0 +1,23 @@
++/*
++ *  74x164 - Serial-in/parallel-out 8-bits shift register
++ *
++ *  Copyright (C) 2010 Gabor Juhos <juhosg@openwrt.org>
++ *
++ *  This program is free software; you can redistribute it and/or modify
++ *  it under the terms of the GNU General Public License version 2 as
++ *  published by the Free Software Foundation.
++ */
++
++#ifndef __74X164_H
++#define __74X164_H
++
++#define GEN_74X164_DRIVER_NAME "74x164"
++
++struct gen_74x164_platform_data {
++       unsigned        gpio_base;
++       unsigned        ngpio;
++       unsigned        gpio_pin_data;
++       unsigned        gpio_pin_clk;
++};
++
++#endif /* __74x164_H */

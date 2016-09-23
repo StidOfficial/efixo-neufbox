@@ -1,0 +1,26 @@
+--- a/drivers/net/Kconfig
++++ b/drivers/net/Kconfig
+@@ -119,6 +119,13 @@ config TUN
+ 
+ 	  If you don't know what to use this for, you don't need it.
+ 
++config VETH
++        tristate "Virtual ethernet pair device"
++        ---help---
++          This device is a local ethernet tunnel. Devices are created in pairs.
++          When one end receives the packet it appears on its pair and vice
++          versa.
++
+ config NET_SB1000
+ 	tristate "General Instruments Surfboard 1000"
+ 	depends on PNP
+--- a/drivers/net/Makefile
++++ b/drivers/net/Makefile
+@@ -189,6 +189,7 @@ obj-$(CONFIG_MACSONIC) += macsonic.o
+ obj-$(CONFIG_MACMACE) += macmace.o
+ obj-$(CONFIG_MAC89x0) += mac89x0.o
+ obj-$(CONFIG_TUN) += tun.o
++obj-$(CONFIG_VETH) += veth.o
+ obj-$(CONFIG_NET_NETX) += netx-eth.o
+ obj-$(CONFIG_DL2K) += dl2k.o
+ obj-$(CONFIG_R8169) += r8169.o

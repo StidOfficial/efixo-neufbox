@@ -1,0 +1,40 @@
+--- a/drivers/ide/pci/via82cxxx.c
++++ b/drivers/ide/pci/via82cxxx.c
+@@ -346,6 +346,16 @@ static unsigned int __devinit init_chips
+ 
+ 	BUG_ON(!via_config->id);
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++  	// read CMOS Cable type (offset=0x10), refer to /arch/mips/cavium-octeon/pci_chip.c -> chip_vt82c686b_pmio_setup()
++        outb(0x10, 0x70);	
++        v = inb(0x71);		
++        if ( v & 0x40 )
++	    pci_write_config_dword(dev, VIA_UDMA_TIMING, 0x07070707);
++        else
++ 	    pci_write_config_dword(dev, VIA_UDMA_TIMING, 0x17171717);
++#endif
++
+ 	/*
+ 	 * Detect cable and configure Clk66
+ 	 */
+@@ -465,6 +475,20 @@ static void __devinit init_hwif_via82cxx
+ 		hwif->autodma = 1;
+ 	hwif->drives[0].autodma = hwif->autodma;
+ 	hwif->drives[1].autodma = hwif->autodma;
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++{
++	// *** East Add Change IDE base port 1,2, 0x1f1<->0x1f2, 0x1f5<->0x1f6
++	unsigned long base = (unsigned long) hwif->hw.io_ports[IDE_DATA_OFFSET];
++	hwif->io_ports[IDE_DATA_OFFSET]		= base;
++	hwif->io_ports[IDE_ERROR_OFFSET]	= base + 2;
++	hwif->io_ports[IDE_NSECTOR_OFFSET]	= base + 1;
++	hwif->io_ports[IDE_SECTOR_OFFSET]	= base + 3;
++	hwif->io_ports[IDE_LCYL_OFFSET]		= base + 4;
++	hwif->io_ports[IDE_HCYL_OFFSET]		= base + 6;
++	hwif->io_ports[IDE_SELECT_OFFSET]	= base + 5;
++	hwif->io_ports[IDE_STATUS_OFFSET]	= base + 7;
++}
++#endif
+ }
+ 
+ static ide_pci_device_t via82cxxx_chipsets[] __devinitdata = {

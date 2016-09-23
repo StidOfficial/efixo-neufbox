@@ -1,0 +1,519 @@
+--- a/networking/wget.c
++++ b/networking/wget.c
+@@ -8,7 +8,12 @@
+  */
+ #include "libbb.h"
+ #ifdef VOIP_DSCP
++#include <sys/time.h>
++#include <sys/types.h>
+ #include <sys/socket.h>
++#include <sys/select.h>
++#include <sys/syscall.h>
++
+ #include <netinet/in.h>
+ #include <netinet/ip.h> /* superset of previous */
+ #endif
+@@ -37,6 +42,7 @@ struct globals {
+ 	unsigned lastupdate_sec;
+ 	unsigned start_sec;
+ #endif
++	unsigned long timeout;    /* Wget timeout */
+ 	smallint chunked;         /* chunked transfer encoding */
+ 	smallint got_clen;        /* got content-length: from server  */
+ };
+@@ -52,6 +58,7 @@ struct BUG_G_too_big {
+ #define curfile         (G.curfile        )
+ #define lastupdate_sec  (G.lastupdate_sec )
+ #define start_sec       (G.start_sec      )
++#define timeout         (G.timeout        )
+ #define INIT_G() do { } while (0)
+ 
+ 
+@@ -235,36 +242,88 @@ static void strip_ipv6_scope_id(char *ho
+ 	overlapping_strcpy(scope, cp);
+ }
+ 
++/* The Linux kernel can in some situations update the timeout value. */
++static int linux_pselect(int nfds, fd_set *readfds, fd_set *writefds,
++		fd_set *exceptfds, const struct timespec *ts,
++		const sigset_t *sigmask)
++{
++	/* Note: the system call expects 7 values but on most architectures
++	 * we can only pass in 6 directly.  If there is an architecture with
++	 * support for more parameters a new version of this file needs to
++	 * be created.  */
++	struct {
++		const sigset_t *ss;
++		size_t ss_len;
++	} data;
++
++	data.ss = sigmask;
++	data.ss_len = _NSIG / 8;
++
++	return syscall(__NR_pselect6, nfds, readfds, writefds, exceptfds, ts, &data);
++}
++
++static void wget_timeout(int fd)
++{
++	fd_set rfds;
++	struct timespec ts;
++
++	FD_ZERO(&rfds);
++	FD_SET(fd, &rfds);
++	ts.tv_sec = timeout;
++	ts.tv_nsec = 0;
++
++	for (;;) {
++		int err = linux_pselect(fd + 1, &rfds, NULL, NULL, &ts, NULL);
++		if (err <= 0) {
++			if (err == 0) {/* timeout */
++				printf("wget: timeout %lu aborted\n", timeout);
++				exit(2); /* special magic for timeout */
++			}
++			if (errno == EINTR)
++				continue;
++			exit(EXIT_FAILURE);
++		}
++		/* data ready */
++		break;
++	}
++}
++
+ /* Read NMEMB bytes into PTR from STREAM.  Returns the number of bytes read,
+  * and a short count if an eof or non-interrupt error is encountered.  */
+-static size_t safe_fread(void *ptr, size_t nmemb, FILE *stream)
++static ssize_t wget_read(int fd, void *ptr, size_t nmemb)
+ {
+-	size_t ret;
+-	char *p = (char*)ptr;
+-
+-	do {
+-		clearerr(stream);
+-		errno = 0;
+-		ret = fread(p, 1, nmemb, stream);
+-		p += ret;
+-		nmemb -= ret;
+-	} while (nmemb && ferror(stream) && errno == EINTR);
++	if (timeout)
++		wget_timeout(fd);
+ 
+-	return p - (char*)ptr;
++	return safe_read(fd, ptr, nmemb);
+ }
+ 
+ /* Read a line or SIZE-1 bytes into S, whichever is less, from STREAM.
+  * Returns S, or NULL if an eof or non-interrupt error is encountered.  */
+-static char *safe_fgets(char *s, int size, FILE *stream)
++static char *wget_gets(int fd, char *s, int size)
+ {
+-	char *ret;
++	char *ret = s;
++	ssize_t n;
++
++	if (!size)
++		return NULL;
+ 
+ 	do {
+-		clearerr(stream);
+-		errno = 0;
+-		ret = fgets(s, size, stream);
+-	} while (ret == NULL && ferror(stream) && errno == EINTR);
++		n = safe_read(fd, s, 1);
++		if (n < 0)
++			return NULL;
++		size--;
++		if ((*s == '\0') || (*s == '\n')) {
++			if (size)
++				++s;
++			*s = '\0';
++			return ret;
++		}
++		s++;
++	} while (size);
+ 
++	/* truncated */
++	*(s-1) = '\0';
+ 	return ret;
+ }
+ 
+@@ -289,13 +348,12 @@ static char* sanitize_string(char *s)
+ 	return s;
+ }
+ 
+-static FILE *open_socket(len_and_sockaddr *lsa)
++static int open_socket(len_and_sockaddr *lsa)
+ {
+ 	int fd;
+ #ifdef VOIP_DSCP
+ 	int tos;
+ #endif
+-	FILE *fp;
+ 
+ 	/* glibc 2.4 seems to try seeking on it - ??! */
+ 	/* hopefully it understands what ESPIPE means... */
+@@ -308,26 +366,21 @@ static FILE *open_socket(len_and_sockadd
+ 	setsockopt(fd, SOL_IP, IP_TOS, &tos, sizeof(tos));
+ #endif
+ 
+-	fp = fdopen(fd, "r+");
+-	if (fp == NULL)
+-		bb_perror_msg_and_die("fdopen");
+-
+-	return fp;
++	return fd;
+ }
+ 
+-static int ftpcmd(const char *s1, const char *s2, FILE *fp, char *buf)
++static int ftpcmd(const char *s1, const char *s2, int fd, char *buf)
+ {
+ 	int result;
+ 	if (s1) {
+ 		if (!s2) s2 = "";
+-		fprintf(fp, "%s%s\r\n", s1, s2);
+-		fflush(fp);
++		dprintf(fd, "%s%s\r\n", s1, s2);
+ 	}
+ 
+ 	do {
+ 		char *buf_ptr;
+ 
+-		if (fgets(buf, 510, fp) == NULL) {
++		if (wget_gets(fd, buf, 510) == NULL) {
+ 			bb_perror_msg_and_die("error getting response");
+ 		}
+ 		buf_ptr = strstr(buf, "\r\n");
+@@ -400,15 +453,15 @@ static void parse_url(char *src_url, str
+ 	sp = h->host;
+ }
+ 
+-static char *gethdr(char *buf, size_t bufsiz, FILE *fp /*, int *istrunc*/)
++static char *gethdr(int fd, char *buf, size_t bufsiz /*, int *istrunc*/)
+ {
+ 	char *s, *hdrval;
+-	int c;
++	char c;
+ 
+ 	/* *istrunc = 0; */
+ 
+ 	/* retrieve header line */
+-	if (fgets(buf, bufsiz, fp) == NULL)
++	if (wget_gets(fd, buf, bufsiz) == NULL)
+ 		return NULL;
+ 
+ 	/* see if we are at the end of the headers */
+@@ -440,8 +493,13 @@ static char *gethdr(char *buf, size_t bu
+ 	}
+ 
+ 	/* Rats! The buffer isn't big enough to hold the entire header value */
+-	while (c = getc(fp), c != EOF && c != '\n')
+-		continue;
++	do {
++		if (read(fd, &c, 1) < 0) {
++			if (errno == EINTR)
++				continue;
++			break;
++		}
++	} while (c != '\n');
+ 	/* *istrunc = 1; */
+ 	return hdrval;
+ }
+@@ -484,18 +542,18 @@ static char *URL_escape(const char *str)
+ }
+ #endif
+ 
+-static FILE* prepare_ftp_session(FILE **dfpp, struct host_info *target, len_and_sockaddr *lsa)
++static int prepare_ftp_session(int *dfdp, struct host_info *target, len_and_sockaddr *lsa)
+ {
+ 	char buf[512];
+-	FILE *sfp;
++	int sfd;
+ 	char *str;
+ 	int port;
+ 
+ 	if (!target->user)
+ 		target->user = xstrdup("anonymous:busybox@");
+ 
+-	sfp = open_socket(lsa);
+-	if (ftpcmd(NULL, NULL, sfp, buf) != 220)
++	sfd = open_socket(lsa);
++	if (ftpcmd(NULL, NULL, sfd, buf) != 220)
+ 		bb_error_msg_and_die("%s", sanitize_string(buf+4));
+ 
+ 	/*
+@@ -505,23 +563,23 @@ static FILE* prepare_ftp_session(FILE **
+ 	str = strchr(target->user, ':');
+ 	if (str)
+ 		*str++ = '\0';
+-	switch (ftpcmd("USER ", target->user, sfp, buf)) {
++	switch (ftpcmd("USER ", target->user, sfd, buf)) {
+ 	case 230:
+ 		break;
+ 	case 331:
+-		if (ftpcmd("PASS ", str, sfp, buf) == 230)
++		if (ftpcmd("PASS ", str, sfd, buf) == 230)
+ 			break;
+ 		/* fall through (failed login) */
+ 	default:
+ 		bb_error_msg_and_die("ftp login: %s", sanitize_string(buf+4));
+ 	}
+ 
+-	ftpcmd("TYPE I", NULL, sfp, buf);
++	ftpcmd("TYPE I", NULL, sfd, buf);
+ 
+ 	/*
+ 	 * Querying file size
+ 	 */
+-	if (ftpcmd("SIZE ", target->path, sfp, buf) == 213) {
++	if (ftpcmd("SIZE ", target->path, sfd, buf) == 213) {
+ 		content_len = BB_STRTOOFF(buf+4, NULL, 10);
+ 		if (errno || content_len < 0) {
+ 			bb_error_msg_and_die("SIZE value is garbage");
+@@ -532,7 +590,7 @@ static FILE* prepare_ftp_session(FILE **
+ 	/*
+ 	 * Entering passive mode
+ 	 */
+-	if (ftpcmd("PASV", NULL, sfp, buf) != 227) {
++	if (ftpcmd("PASV", NULL, sfd, buf) != 227) {
+  pasv_error:
+ 		bb_error_msg_and_die("bad response to %s: %s", "PASV", sanitize_string(buf));
+ 	}
+@@ -550,18 +608,18 @@ static FILE* prepare_ftp_session(FILE **
+ 	port += xatou_range(str+1, 0, 255) * 256;
+ 	set_nport(lsa, htons(port));
+ 
+-	*dfpp = open_socket(lsa);
++	*dfdp = open_socket(lsa);
+ 
+ 	if (beg_range) {
+ 		sprintf(buf, "REST %"OFF_FMT"d", beg_range);
+-		if (ftpcmd(buf, NULL, sfp, buf) == 350)
++		if (ftpcmd(buf, NULL, sfd, buf) == 350)
+ 			content_len -= beg_range;
+ 	}
+ 
+-	if (ftpcmd("RETR ", target->path, sfp, buf) > 150)
++	if (ftpcmd("RETR ", target->path, sfd, buf) > 150)
+ 		bb_error_msg_and_die("bad response to %s: %s", "RETR", sanitize_string(buf));
+ 
+-	return sfp;
++	return sfd;
+ }
+ 
+ /* Must match option string! */
+@@ -580,7 +638,7 @@ enum {
+ 	WGET_OPT_POST_DATA  = (1 << 11) * ENABLE_FEATURE_WGET_LONG_OPTIONS,
+ };
+ 
+-static void NOINLINE retrieve_file_data(FILE *dfp, int output_fd)
++static void NOINLINE retrieve_file_data(int dfd, int output_fd)
+ {
+ 	char buf[512];
+ 
+@@ -598,9 +656,9 @@ static void NOINLINE retrieve_file_data(
+ 
+ 			if (content_len < sizeof(buf) && (G.chunked || G.got_clen))
+ 				rdsz = (unsigned)content_len;
+-			n = safe_fread(buf, rdsz, dfp);
++			n = wget_read(dfd, buf, rdsz);
+ 			if (n <= 0) {
+-				if (ferror(dfp)) {
++				if (n < 0) {
+ 					/* perror will not work: ferror doesn't set errno */
+ 					bb_error_msg_and_die(bb_msg_read_error);
+ 				}
+@@ -617,9 +675,9 @@ static void NOINLINE retrieve_file_data(
+ 		if (!G.chunked)
+ 			break;
+ 
+-		safe_fgets(buf, sizeof(buf), dfp); /* This is a newline */
++		wget_gets(dfd, buf, sizeof(buf)); /* This is a newline */
+  get_clen:
+-		safe_fgets(buf, sizeof(buf), dfp);
++		wget_gets(dfd, buf, sizeof(buf));
+ 		content_len = STRTOOFF(buf, NULL, 16);
+ 		/* FIXME: error check? */
+ 		if (content_len == 0)
+@@ -645,13 +703,14 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 	char *extra_headers = NULL;
+ 	llist_t *headers_llist = NULL;
+ #endif
+-	FILE *sfp;                      /* socket to web/ftp server         */
+-	FILE *dfp;                      /* socket to ftp server (data)      */
++	int sfd;                        /* socket to web/ftp server         */
++	int dfd;                        /* socket to ftp server (data)      */
+ 	char *fname_out;                /* where to direct output (-O)      */
+ 	int output_fd = -1;
+ 	bool use_proxy;                 /* Use proxies if env vars are set  */
+ 	const char *proxy_flag = "on";  /* Use proxies if env vars are set  */
+ 	const char *user_agent = "Wget";/* "User-Agent" header field        */
++	const char *str_timeout = NULL;
+ 
+ 	static const char keywords[] ALIGN1 =
+ 		"content-length\0""transfer-encoding\0""chunked\0""location\0";
+@@ -670,7 +729,7 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 		"user-agent\0"       Required_argument "U"
+ 		/* Ignored: */
+ 		// "tries\0"            Required_argument "t"
+-		// "timeout\0"          Required_argument "T"
++		"timeout\0"          Required_argument "T"
+ 		/* Ignored (we always use PASV): */
+ 		"passive-ftp\0"      No_argument       "\xfd"
+ 		"header\0"           Required_argument "\xfe"
+@@ -689,10 +748,12 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 				&fname_out, &dir_prefix,
+ 				&proxy_flag, &user_agent,
+ 				NULL, /* -t RETRIES */
+-				NULL /* -T NETWORK_READ_TIMEOUT */
++				&str_timeout /* -T NETWORK_READ_TIMEOUT */
+ 				IF_FEATURE_WGET_LONG_OPTIONS(, &headers_llist)
+ 				IF_FEATURE_WGET_LONG_OPTIONS(, &post_data)
+ 				);
++	if (str_timeout)
++		timeout = strtoul(str_timeout, NULL, 0);
+ #if ENABLE_FEATURE_WGET_LONG_OPTIONS
+ 	if (headers_llist) {
+ 		int size = 1;
+@@ -787,59 +848,59 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 		int status;
+ 
+ 		/* Open socket to http server */
+-		sfp = open_socket(lsa);
++		sfd = open_socket(lsa);
+ 
+ 		/* Send HTTP request */
+ 		if (use_proxy) {
+-			fprintf(sfp, "GET %stp://%s/%s HTTP/1.1\r\n",
++			dprintf(sfd, "GET %stp://%s/%s HTTP/1.1\r\n",
+ 				target.is_ftp ? "f" : "ht", target.host,
+ 				target.path);
+ 		} else {
+ 			if (opt & WGET_OPT_POST_DATA)
+-				fprintf(sfp, "POST /%s HTTP/1.1\r\n", target.path);
++				dprintf(sfd, "POST /%s HTTP/1.1\r\n", target.path);
+ 			else
+-				fprintf(sfp, "GET /%s HTTP/1.1\r\n", target.path);
++				dprintf(sfd, "GET /%s HTTP/1.1\r\n", target.path);
+ 		}
+ 
+-		fprintf(sfp, "Host: %s\r\nUser-Agent: %s\r\n",
++		dprintf(sfd, "Host: %s\r\nUser-Agent: %s\r\n",
+ 			target.host, user_agent);
+ 
+ #if ENABLE_FEATURE_WGET_AUTHENTICATION
+ 		if (target.user) {
+-			fprintf(sfp, "Proxy-Authorization: Basic %s\r\n"+6,
++			dprintf(sfd, "Proxy-Authorization: Basic %s\r\n"+6,
+ 				base64enc_512(buf, target.user));
+ 		}
+ 		if (use_proxy && server.user) {
+-			fprintf(sfp, "Proxy-Authorization: Basic %s\r\n",
++			dprintf(sfd, "Proxy-Authorization: Basic %s\r\n",
+ 				base64enc_512(buf, server.user));
+ 		}
+ #endif
+ 
+ 		if (beg_range)
+-			fprintf(sfp, "Range: bytes=%"OFF_FMT"d-\r\n", beg_range);
++			dprintf(sfd, "Range: bytes=%"OFF_FMT"d-\r\n", beg_range);
+ #if ENABLE_FEATURE_WGET_LONG_OPTIONS
+ 		if (extra_headers)
+-			fputs(extra_headers, sfp);
++			dprintf(sfd, "%s", extra_headers);
+ 
+ 		if (opt & WGET_OPT_POST_DATA) {
+ 			char *estr = URL_escape(post_data);
+-			fprintf(sfp, "Content-Type: application/x-www-form-urlencoded\r\n");
+-			fprintf(sfp, "Content-Length: %u\r\n" "\r\n" "%s",
++			dprintf(sfd, "Content-Type: application/x-www-form-urlencoded\r\n");
++			dprintf(sfd, "Content-Length: %u\r\n" "\r\n" "%s",
+ 					(int) strlen(estr), estr);
+-			/*fprintf(sfp, "Connection: Keep-Alive\r\n\r\n");*/
+-			/*fprintf(sfp, "%s\r\n", estr);*/
++			/*dprintf(sfd, "Connection: Keep-Alive\r\n\r\n");*/
++			/*dprintf(sfd, "%s\r\n", estr);*/
+ 			free(estr);
+ 		} else
+ #endif
+ 		{ /* If "Connection:" is needed, document why */
+-			fprintf(sfp, /* "Connection: close\r\n" */ "\r\n");
++			dprintf(sfd, /* "Connection: close\r\n" */ "\r\n");
+ 		}
+ 
+ 		/*
+ 		 * Retrieve HTTP response line and check for "200" status code.
+ 		 */
+  read_response:
+-		if (fgets(buf, sizeof(buf), sfp) == NULL)
++		if (wget_gets(sfd, buf, sizeof(buf)) == NULL)
+ 			bb_error_msg_and_die("no response from server");
+ 
+ 		str = buf;
+@@ -851,7 +912,7 @@ int wget_main(int argc UNUSED_PARAM, cha
+ 		switch (status) {
+ 		case 0:
+ 		case 100:
+-			while (gethdr(buf, sizeof(buf), sfp /*, &n*/) != NULL)
++			while (gethdr(sfd, buf, sizeof(buf) /*, &n*/) != NULL)
+ 				/* eat all remaining headers */;
+ 			goto read_response;
+ 		case 200:
+@@ -900,7 +961,7 @@ However, in real world it was observed t
+ 		/*
+ 		 * Retrieve HTTP headers.
+ 		 */
+-		while ((str = gethdr(buf, sizeof(buf), sfp /*, &n*/)) != NULL) {
++		while ((str = gethdr(sfd, buf, sizeof(buf) /*, &n*/)) != NULL) {
+ 			/* gethdr converted "FOO:" string to lowercase */
+ 			smalluint key;
+ 			/* strip trailing whitespace */
+@@ -926,7 +987,7 @@ However, in real world it was observed t
+ 			if (key == KEY_location && status >= 300) {
+ 				if (--redir_limit == 0)
+ 					bb_error_msg_and_die("too many redirections");
+-				fclose(sfp);
++				close(sfd);
+ 				G.got_clen = 0;
+ 				G.chunked = 0;
+ 				if (str[0] == '/')
+@@ -951,18 +1012,18 @@ However, in real world it was observed t
+ //			bb_error_msg_and_die("bad redirection (no Location: header from server)");
+ 
+ 		/* For HTTP, data is pumped over the same connection */
+-		dfp = sfp;
++		dfd = sfd;
+ 
+ 	} else {
+ 		/*
+ 		 *  FTP session
+ 		 */
+-		sfp = prepare_ftp_session(&dfp, &target, lsa);
++		sfd = prepare_ftp_session(&dfd, &target, lsa);
+ 	}
+ 
+ 	if (opt & WGET_OPT_SPIDER) {
+ 		if (ENABLE_FEATURE_CLEAN_UP)
+-			fclose(sfp);
++			close(sfd);
+ 		return EXIT_SUCCESS;
+ 	}
+ 
+@@ -974,14 +1035,14 @@ However, in real world it was observed t
+ 		output_fd = xopen(fname_out, o_flags);
+ 	}
+ 
+-	retrieve_file_data(dfp, output_fd);
++	retrieve_file_data(dfd, output_fd);
+ 
+-	if (dfp != sfp) {
++	if (dfd != sfd) {
+ 		/* It's ftp. Close it properly */
+-		fclose(dfp);
+-		if (ftpcmd(NULL, NULL, sfp, buf) != 226)
++		close(dfd);
++		if (ftpcmd(NULL, NULL, sfd, buf) != 226)
+ 			bb_error_msg_and_die("ftp error: %s", sanitize_string(buf+4));
+-		ftpcmd("QUIT", NULL, sfp, buf);
++		ftpcmd("QUIT", NULL, sfd, buf);
+ 	}
+ 
+ 	return EXIT_SUCCESS;

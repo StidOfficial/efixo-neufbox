@@ -1,0 +1,11 @@
+--- a/src/ctl.c
++++ b/src/ctl.c
+@@ -263,7 +263,7 @@ static void ctl_connect(struct updatepkt
+                         &res);
+         if(e != 0)
+         {
+-                log_error("getaddrinfo(%s, %s) failed: %s\n",
++                log_error("getaddrinfo(%s, %d) failed: %s\n",
+                           updatepkt->ctl->def->ipserv, 
+                           updatepkt->ctl->def->portserv, 
+                           gai_strerror(e));

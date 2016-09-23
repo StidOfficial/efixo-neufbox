@@ -1,0 +1,20 @@
+--- a/drivers/net/bcmxtmrt.c
++++ b/drivers/net/bcmxtmrt.c
+@@ -69,7 +69,7 @@
+ 
+ 
+ /* Externs. */
+-extern unsigned long getMemorySize(void);
++extern unsigned int bcm63xx_get_memory_size(void);
+ 
+ 
+ /* Prototypes. */
+@@ -244,7 +244,7 @@ int __init bcmxtmrt_init( void )
+         g_GlobalInfo.pAtmDev->ci_range.vci_bits = 16;
+     }
+ 
+-    g_GlobalInfo.ulNumExtBufs = NR_RX_BDS(getMemorySize());
++    g_GlobalInfo.ulNumExtBufs = NR_RX_BDS(bcm63xx_get_memory_size());
+     g_GlobalInfo.ulNumExtBufsRsrvd = g_GlobalInfo.ulNumExtBufs / 5;
+     g_GlobalInfo.ulNumExtBufs90Pct = (g_GlobalInfo.ulNumExtBufs * 9) / 10;
+     g_GlobalInfo.ulNumExtBufs50Pct = g_GlobalInfo.ulNumExtBufs / 2;

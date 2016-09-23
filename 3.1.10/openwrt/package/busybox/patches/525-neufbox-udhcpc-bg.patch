@@ -1,0 +1,31 @@
+--- a/networking/udhcp/dhcpc.c
++++ b/networking/udhcp/dhcpc.c
+@@ -282,6 +282,14 @@ int udhcpc_main(int argc UNUSED_PARAM, c
+ 		client_config.opt_mask[n >> 3] |= 1 << (n & 7);
+ 	}
+ 
++#if BB_MMU /* NOMMU case backgrounded earlier */
++	if (!(opt & OPT_f)) {
++		client_background();
++		/* do not background again! */
++		opt = ((opt & ~OPT_b) | OPT_f);
++	}
++#endif
++
+ 	if (udhcp_read_interface(client_config.interface,
+ 			&client_config.ifindex,
+ 			NULL,
+@@ -644,13 +652,6 @@ int udhcpc_main(int argc UNUSED_PARAM, c
+ 				}
+ 				/* future renew failures should not exit (JM) */
+ 				opt &= ~OPT_n;
+-#if BB_MMU /* NOMMU case backgrounded earlier */
+-				if (!(opt & OPT_f)) {
+-					client_background();
+-					/* do not background again! */
+-					opt = ((opt & ~OPT_b) | OPT_f);
+-				}
+-#endif
+ 				already_waited_sec = 0;
+ 				continue; /* back to main loop */
+ 			}

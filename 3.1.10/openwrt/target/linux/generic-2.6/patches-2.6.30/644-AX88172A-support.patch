@@ -1,0 +1,111 @@
+--- a/drivers/net/usb/asix.c
++++ b/drivers/net/usb/asix.c
+@@ -95,6 +95,8 @@ static const char driver_name [] = "asix
+ #define AX88772_IPG0_DEFAULT		0x15
+ #define AX88772_IPG1_DEFAULT		0x0c
+ #define AX88772_IPG2_DEFAULT		0x12
++#define AX88772A_IPG1_DEFAULT		0x16
++#define AX88772A_IPG2_DEFAULT		0x1A
+ 
+ /* AX88772 & AX88178 Medium Mode Register */
+ #define AX_MEDIUM_PF		0x0080
+@@ -402,7 +404,12 @@ static void asix_status(struct usbnet *d
+ 		return;
+ 
+ 	event = urb->transfer_buffer;
++	/* For nb6 board, force link UP */
++#ifdef CONFIG_BOARD_NEUFBOX6
++	link = 1;
++#else
+ 	link = event->link & 0x01;
++#endif
+ 	if (netif_carrier_ok(dev->net) != link) {
+ 		if (link) {
+ 			netif_carrier_on(dev->net);
+@@ -892,8 +899,19 @@ static int ax88772_link_reset(struct usb
+ 	u16 mode;
+ 	struct ethtool_cmd ecmd;
+ 
++#ifdef CONFIG_BOARD_NEUFBOX6
++	u16 bmcr = asix_mdio_read(dev->net, dev->mii.phy_id, MII_BMCR);
++	ecmd.speed = SPEED_100;
++       	ecmd.duplex = DUPLEX_FULL;
++	if (!(bmcr & BMCR_FULLDPLX))
++		ecmd.duplex = DUPLEX_HALF;
++
++	if (!(bmcr & BMCR_SPEED100))
++		ecmd.speed = SPEED_10;
++#else
+ 	mii_check_media(&dev->mii, 1, 1);
+ 	mii_ethtool_gset(&dev->mii, &ecmd);
++#endif
+ 	mode = AX88772_MEDIUM_DEFAULT;
+ 
+ 	if (ecmd.speed != SPEED_100)
+@@ -925,6 +943,7 @@ static int ax88772_bind(struct usbnet *d
+ {
+ 	int ret, embd_phy;
+ 	u16 rx_ctl;
++	u16 bmcr;
+ 	struct asix_data *data = (struct asix_data *)&dev->data;
+ 	u8 buf[ETH_ALEN];
+ 	u32 phyid;
+@@ -934,13 +953,15 @@ static int ax88772_bind(struct usbnet *d
+ 	usbnet_get_endpoints(dev,intf);
+ 
+ 	if ((ret = asix_write_gpio(dev,
+-			AX_GPIO_RSE | AX_GPIO_GPO_2 | AX_GPIO_GPO2EN, 5)) < 0)
++			AX_GPIO_RSE, 5)) < 0)
+ 		goto out;
+ 
+ 	/* 0x10 is the phy id of the embedded 10/100 ethernet phy */
+ 	embd_phy = ((asix_get_phy_addr(dev) & 0x1f) == 0x10 ? 1 : 0);
++	/* Select the data path from USB2.0 to reverse MII */
++	/* PSEL = 0, ASEL = 0, SS = 10 ,SSEN = 1 */
+ 	if ((ret = asix_write_cmd(dev, AX_CMD_SW_PHY_SELECT,
+-				embd_phy, 0, 0, NULL)) < 0) {
++				0x18, 0, 0, NULL)) < 0) {
+ 		dbg("Select PHY #1 failed: %d", ret);
+ 		goto out;
+ 	}
+@@ -1005,15 +1026,15 @@ static int ax88772_bind(struct usbnet *d
+ 
+ 	asix_mdio_write(dev->net, dev->mii.phy_id, MII_BMCR, BMCR_RESET);
+ 	asix_mdio_write(dev->net, dev->mii.phy_id, MII_ADVERTISE,
+-			ADVERTISE_ALL | ADVERTISE_CSMA);
++			ADVERTISE_ALL | ADVERTISE_CSMA | ADVERTISE_PAUSE_CAP);
+ 	mii_nway_restart(&dev->mii);
+ 
+ 	if ((ret = asix_write_medium_mode(dev, AX88772_MEDIUM_DEFAULT)) < 0)
+ 		goto out;
+ 
+ 	if ((ret = asix_write_cmd(dev, AX_CMD_WRITE_IPG0,
+-				AX88772_IPG0_DEFAULT | AX88772_IPG1_DEFAULT,
+-				AX88772_IPG2_DEFAULT, 0, NULL)) < 0) {
++				AX88772_IPG0_DEFAULT | AX88772A_IPG1_DEFAULT << 8,
++				AX88772A_IPG2_DEFAULT, 0, NULL)) < 0) {
+ 		dbg("Write IPG,IPG1,IPG2 failed: %d", ret);
+ 		goto out;
+ 	}
+@@ -1034,6 +1055,10 @@ static int ax88772_bind(struct usbnet *d
+ 		   jumbo eth frames */
+ 		dev->rx_urb_size = 2048;
+ 	}
++
++	bmcr = asix_mdio_read(dev->net, dev->mii.phy_id, MII_BMCR);
++	bmcr |= BMCR_PDOWN;
++	asix_mdio_write(dev->net, dev->mii.phy_id, MII_BMCR, bmcr);
+ 	return 0;
+ 
+ out:
+@@ -1492,6 +1517,10 @@ static const struct usb_device_id	produc
+ 	// ASIX 88772a
+ 	USB_DEVICE(0x0db0, 0xa877),
+ 	.driver_info = (unsigned long) &ax88772_info,
++}, {
++	// ASIX AX88772A 10/100
++	USB_DEVICE(0x0b95, 0x172A),
++	.driver_info = (unsigned long) &ax88772_info,
+ },
+ 	{ },		// END
+ };

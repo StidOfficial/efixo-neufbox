@@ -1,0 +1,37 @@
+--- a/arch/mips/cavium-octeon/Kconfig
++++ b/arch/mips/cavium-octeon/Kconfig
+@@ -83,3 +83,5 @@ config ARCH_SPARSEMEM_ENABLE
+ 	def_bool y
+ 	select SPARSEMEM_STATIC
+ 	depends on CPU_CAVIUM_OCTEON
++
++source "arch/mips/cavium-octeon/boards/Kconfig"
+--- a/arch/mips/cavium-octeon/Makefile
++++ b/arch/mips/cavium-octeon/Makefile
+@@ -9,8 +9,8 @@
+ # Copyright (C) 2005-2009 Cavium Networks
+ #
+ 
+-obj-y := setup.o serial.o octeon-platform.o octeon-irq.o csrc-octeon.o
+-obj-y += dma-octeon.o flash_setup.o
++obj-y := setup.o serial.o octeon-irq.o csrc-octeon.o
++obj-y += dma-octeon.o
+ obj-y += octeon-memcpy.o
+ 
+ obj-$(CONFIG_SMP)                     += smp.o
+@@ -18,3 +18,5 @@ obj-$(CONFIG_PCI)                     +=
+ obj-$(CONFIG_PCI)                     += pci.o
+ obj-$(CONFIG_PCI)                     += pcie.o
+ obj-$(CONFIG_PCI_MSI)                 += msi.o
++
++obj-y		+= boards/
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -596,6 +596,7 @@ core-$(CONFIG_TOSHIBA_RBTX4939) += arch/
+ #
+ core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/
+ cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= -I$(srctree)/arch/mips/include/asm/mach-cavium-octeon
++cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= -I$(srctree)/arch/mips/include/asm/mach-cavium-octeon/gpl-executive
+ core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/executive/
+ ifdef CONFIG_CAVIUM_OCTEON_2ND_KERNEL
+ load-$(CONFIG_CPU_CAVIUM_OCTEON)	+= 0xffffffff84100000

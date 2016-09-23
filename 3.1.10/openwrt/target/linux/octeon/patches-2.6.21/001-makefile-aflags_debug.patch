@@ -1,0 +1,10 @@
+--- a/Makefile
++++ b/Makefile
+@@ -498,6 +498,7 @@ endif
+ 
+ ifdef CONFIG_DEBUG_INFO
+ CFLAGS		+= -g
++AFLAGS		+= -g
+ endif
+ 
+ # Force gcc to behave correct even for buggy distributions

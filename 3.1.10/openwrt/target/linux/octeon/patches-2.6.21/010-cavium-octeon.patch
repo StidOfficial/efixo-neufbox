@@ -1,0 +1,3359 @@
+--- a/arch/mips/Kconfig
++++ b/arch/mips/Kconfig
+@@ -820,6 +820,47 @@ config TOSHIBA_RBTX4938
+ 	  This Toshiba board is based on the TX4938 processor. Say Y here to
+ 	  support this machine type
+ 
++config CAVIUM_OCTEON_SIMULATOR
++	bool "Support for the Cavium Networks Octeon Simulator"
++	select SYS_SUPPORTS_32BIT_KERNEL
++	select SYS_SUPPORTS_64BIT_KERNEL
++	select SYS_SUPPORTS_BIG_ENDIAN
++	select SYS_SUPPORTS_HIGHMEM
++	select SYS_SUPPORTS_KGDB
++	select CPU_CAVIUM_OCTEON
++	help
++	  The Octeon simulator is software performance model of the Cavium
++	  Octeon Processor. It supports simulating Octeon processors on x86
++	  hardware.
++
++config CAVIUM_OCTEON_REFERENCE_BOARD
++	bool "Support for the Cavium Networks Octeon reference board"
++	select SYS_SUPPORTS_32BIT_KERNEL
++	select SYS_SUPPORTS_64BIT_KERNEL
++	select SYS_SUPPORTS_BIG_ENDIAN
++	select SYS_SUPPORTS_HIGHMEM
++	select SYS_SUPPORTS_KGDB
++	select CPU_CAVIUM_OCTEON
++	select SWAP_IO_SPACE
++	select HW_HAS_PCI
++	select SWAP_IO_SPACE
++	select ISA
++	select GENERIC_ISA_DMA
++	select ARCH_MAY_HAVE_PC_FDC
++	help
++	  This option supports all of the Octeon reference boards from Cavium
++	  Networks. It builds a kernel that dynamically determines the Octeon
++	  CPU type and supports all known board reference implementations.
++	  Some of the supported boards are:
++		EBT3000
++		EBH3000
++		EBH3100
++		Asus NA-038
++		Thunder
++		Kodama
++		Hikari
++	  Say Y here for most Octeon reference boards.
++
+ endchoice
+ 
+ source "arch/mips/ddb5xxx/Kconfig"
+@@ -834,6 +875,7 @@ source "arch/mips/tx4927/Kconfig"
+ source "arch/mips/tx4938/Kconfig"
+ source "arch/mips/vr41xx/Kconfig"
+ source "arch/mips/philips/pnx8550/common/Kconfig"
++source "arch/mips/cavium-octeon/Kconfig"
+ 
+ endmenu
+ 
+@@ -995,6 +1037,9 @@ config IRQ_CPU_RM9K
+ config IRQ_MV64340
+ 	bool
+ 
++config IRQ_CPU_OCTEON
++	bool
++
+ config DDB5XXX_COMMON
+ 	bool
+ 	select SYS_SUPPORTS_KGDB
+@@ -1110,7 +1155,7 @@ config BOOT_ELF32
+ config MIPS_L1_CACHE_SHIFT
+ 	int
+ 	default "4" if MACH_DECSTATION || SNI_RM
+-	default "7" if SGI_IP27
++	default "7" if SGI_IP27 || CPU_CAVIUM_OCTEON
+ 	default "5"
+ 
+ config HAVE_STD_PC_SERIAL_PORT
+@@ -1353,6 +1398,22 @@ config CPU_SB1
+ 	select CPU_SUPPORTS_HIGHMEM
+ 	select WEAK_ORDERING
+ 
++config CPU_CAVIUM_OCTEON
++	bool "Cavium Octeon processor"
++	select IRQ_CPU_OCTEON
++	select CPU_HAS_PREFETCH
++	select CPU_SUPPORTS_32BIT_KERNEL
++	select CPU_SUPPORTS_64BIT_KERNEL
++	select SYS_SUPPORTS_SMP
++	select NR_CPUS_DEFAULT_16
++	select WEAK_ORDERING
++	select CPU_SUPPORTS_HIGHMEM
++	help
++	  The Cavium Octeon processor is a highly integrated chip containing
++	  many ethernet hardware widgets for networking tasks. The processor
++	  can have up to 16 Mips64v2 cores and 8 integrated gigabit ethernets.
++	  Full details can be found at http://www.caviumnetworks.com.
++
+ endchoice
+ 
+ config SYS_HAS_CPU_MIPS32_R1
+@@ -1436,7 +1497,7 @@ config CPU_MIPSR1
+ 
+ config CPU_MIPSR2
+ 	bool
+-	default y if CPU_MIPS32_R2 || CPU_MIPS64_R2
++	default y if CPU_MIPS32_R2 || CPU_MIPS64_R2 || CPU_CAVIUM_OCTEON
+ 
+ config SYS_SUPPORTS_32BIT_KERNEL
+ 	bool
+@@ -1486,11 +1547,11 @@ config PAGE_SIZE_4KB
+ 
+ config PAGE_SIZE_8KB
+ 	bool "8kB"
+-	depends on EXPERIMENTAL && CPU_R8000
++	depends on EXPERIMENTAL && (CPU_R8000 || CPU_CAVIUM_OCTEON)
+ 	help
+ 	  Using 8kB page size will result in higher performance kernel at
+ 	  the price of higher memory consumption.  This option is available
+-	  only on the R8000 processor.  Not that at the time of this writing
++	  only on the R8000 & Octeon processor.  Not that at the time of this writing
+ 	  this option is still high experimental; there are also issues with
+ 	  compatibility of user applications.
+ 
+@@ -1503,6 +1564,16 @@ config PAGE_SIZE_16KB
+ 	  all non-R3000 family processors.  Note that you will need a suitable
+ 	  Linux distribution to support this.
+ 
++config PAGE_SIZE_32KB
++	bool "32kB"
++	depends on EXPERIMENTAL && CPU_CAVIUM_OCTEON
++	help
++	  Using 32kB page size will result in higher performance kernel at
++	  the price of higher memory consumption.  This option is available on
++	  all Octeon processors.  Not that at the time of this writing this
++	  option is still high experimental; there are also issues with
++	  compatibility of user applications.
++
+ config PAGE_SIZE_64KB
+ 	bool "64kB"
+ 	depends on EXPERIMENTAL && !CPU_R3000 && !CPU_TX39XX
+@@ -1680,7 +1751,7 @@ config SB1_PASS_2_1_WORKAROUNDS
+ 
+ config 64BIT_PHYS_ADDR
+ 	bool "Support for 64-bit physical address space"
+-	depends on (CPU_R4X00 || CPU_R5000 || CPU_RM7000 || CPU_RM9000 || CPU_R10000 || CPU_SB1 || CPU_MIPS32 || CPU_MIPS64) && 32BIT
++	depends on (CPU_R4X00 || CPU_R5000 || CPU_RM7000 || CPU_RM9000 || CPU_R10000 || CPU_SB1 || CPU_MIPS32 || CPU_MIPS64 || CPU_CAVIUM_OCTEON) && 32BIT
+ 
+ config CPU_HAS_LLSC
+ 	bool
+--- a/arch/mips/Kconfig.debug
++++ b/arch/mips/Kconfig.debug
+@@ -76,6 +76,16 @@ config SB1XXX_CORELIS
+ 	  Select compile flags that produce code that can be processed by the
+ 	  Corelis mksym utility and UDB Emulator.
+ 
++config CAVIUM_GDB
++	bool "Remote GDB debugging using the Cavium Networks Multicore GDB"
++	depends on DEBUG_KERNEL
++	depends on CPU_CAVIUM_OCTEON
++	select DEBUG_INFO
++	help
++	  If you say Y here, it will be possible to remotely debug the MIPS
++	  kernel using the Cavium Networks GDB with extended SMP support.
++	  This is only useful for kernel hackers. If unsure, say N.
++
+ config RUNTIME_DEBUG
+ 	bool "Enable run-time debugging"
+ 	depends on DEBUG_KERNEL
+--- a/arch/mips/kernel/asm-offsets.c
++++ b/arch/mips/kernel/asm-offsets.c
+@@ -74,6 +74,10 @@ void output_ptreg_defines(void)
+ #ifdef CONFIG_MIPS_MT_SMTC
+ 	offset("#define PT_TCSTATUS  ", struct pt_regs, cp0_tcstatus);
+ #endif /* CONFIG_MIPS_MT_SMTC */
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	offset("#define PT_MPL    ", struct pt_regs, mpl);
++	offset("#define PT_MTP    ", struct pt_regs, mtp);
++#endif
+ 	size("#define PT_SIZE   ", struct pt_regs);
+ 	linefeed;
+ }
+@@ -335,3 +339,30 @@ void output_irq_cpustat_t_defines(void)
+ 	size("#define IC_IRQ_CPUSTAT_T   ", irq_cpustat_t);
+ 	linefeed;
+ }
++
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++void output_octeon_cop2_state_defines(void)
++{
++	text("/* Octeon specific octeon_cop2_state offsets. */");
++	offset("#define OCTEON_CP2_CRC_IV       ", struct octeon_cop2_state, cop2_crc_iv);
++	offset("#define OCTEON_CP2_CRC_LENGTH   ", struct octeon_cop2_state, cop2_crc_length);
++	offset("#define OCTEON_CP2_CRC_POLY     ", struct octeon_cop2_state, cop2_crc_poly);
++	offset("#define OCTEON_CP2_LLM_DAT      ", struct octeon_cop2_state, cop2_llm_dat);
++	offset("#define OCTEON_CP2_3DES_IV      ", struct octeon_cop2_state, cop2_3des_iv);
++	offset("#define OCTEON_CP2_3DES_KEY     ", struct octeon_cop2_state, cop2_3des_key);
++	offset("#define OCTEON_CP2_3DES_RESULT  ", struct octeon_cop2_state, cop2_3des_result);
++	offset("#define OCTEON_CP2_AES_INP0     ", struct octeon_cop2_state, cop2_aes_inp0);
++	offset("#define OCTEON_CP2_AES_IV       ", struct octeon_cop2_state, cop2_aes_iv);
++	offset("#define OCTEON_CP2_AES_KEY      ", struct octeon_cop2_state, cop2_aes_key);
++	offset("#define OCTEON_CP2_AES_KEYLEN   ", struct octeon_cop2_state, cop2_aes_keylen);
++	offset("#define OCTEON_CP2_AES_RESULT   ", struct octeon_cop2_state, cop2_aes_result);
++	offset("#define OCTEON_CP2_GFM_MULT     ", struct octeon_cop2_state, cop2_gfm_mult);
++	offset("#define OCTEON_CP2_GFM_POLY     ", struct octeon_cop2_state, cop2_gfm_poly);
++	offset("#define OCTEON_CP2_GFM_RESULT   ", struct octeon_cop2_state, cop2_gfm_result);
++	offset("#define OCTEON_CP2_HSH_DATW     ", struct octeon_cop2_state, cop2_hsh_datw);
++	offset("#define OCTEON_CP2_HSH_IVW      ", struct octeon_cop2_state, cop2_hsh_ivw);
++	offset("#define THREAD_CP2              ", struct task_struct, thread.cp2);
++	offset("#define THREAD_CVMSEG           ", struct task_struct, thread.cvmseg.cvmseg);
++	linefeed;
++}
++#endif
+--- a/arch/mips/kernel/binfmt_elfn32.c
++++ b/arch/mips/kernel/binfmt_elfn32.c
+@@ -46,7 +46,11 @@ typedef elf_fpreg_t elf_fpregset_t[ELF_N
+ 	__res;								\
+ })
+ 
++#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
++#define TASK32_SIZE		(0x7fff8000UL - (CONFIG_CAVIUM_RESERVE32<<20))
++#else
+ #define TASK32_SIZE		0x7fff8000UL
++#endif
+ #undef ELF_ET_DYN_BASE
+ #define ELF_ET_DYN_BASE         (TASK32_SIZE / 3 * 2)
+ 
+--- a/arch/mips/kernel/binfmt_elfo32.c
++++ b/arch/mips/kernel/binfmt_elfo32.c
+@@ -48,7 +48,11 @@ typedef elf_fpreg_t elf_fpregset_t[ELF_N
+ 	__res;								\
+ })
+ 
++#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
++#define TASK32_SIZE		(0x7fff8000UL - (CONFIG_CAVIUM_RESERVE32<<20))
++#else
+ #define TASK32_SIZE		0x7fff8000UL
++#endif
+ #undef ELF_ET_DYN_BASE
+ #define ELF_ET_DYN_BASE         (TASK32_SIZE / 3 * 2)
+ 
+--- a/arch/mips/kernel/branch.c
++++ b/arch/mips/kernel/branch.c
+@@ -204,6 +204,36 @@ int __compute_return_epc(struct pt_regs
+ 			break;
+ 		}
+ 		break;
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	case lwc2_op: /* This is bbit0 on Octeon */
++		if ((regs->regs[insn.i_format.rs] & (1ull<<insn.i_format.rt)) == 0)
++			epc = epc + 4 + (insn.i_format.simmediate << 2);
++		else
++			epc += 8;
++		regs->cp0_epc = epc;
++		break;
++	case ldc2_op: /* This is bbit032 on Octeon */
++		if ((regs->regs[insn.i_format.rs] & (1ull<<(insn.i_format.rt+32))) == 0)
++			epc = epc + 4 + (insn.i_format.simmediate << 2);
++		else
++			epc += 8;
++		regs->cp0_epc = epc;
++		break;
++	case swc2_op: /* This is bbit1 on Octeon */
++		if (regs->regs[insn.i_format.rs] & (1ull<<insn.i_format.rt))
++			epc = epc + 4 + (insn.i_format.simmediate << 2);
++		else
++			epc += 8;
++		regs->cp0_epc = epc;
++		break;
++	case sdc2_op: /* This is bbit132 on Octeon */
++		if (regs->regs[insn.i_format.rs] & (1ull<<(insn.i_format.rt+32)))
++			epc = epc + 4 + (insn.i_format.simmediate << 2);
++		else
++			epc += 8;
++		regs->cp0_epc = epc;
++		break;
++#endif
+ 	}
+ 
+ 	return 0;
+--- a/arch/mips/kernel/cpu-probe.c
++++ b/arch/mips/kernel/cpu-probe.c
+@@ -53,6 +53,9 @@ static void r39xx_wait(void)
+  */
+ static void r4k_wait(void)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	wmb();
++#endif
+ 	__asm__("	.set	mips3			\n"
+ 		"	wait				\n"
+ 		"	.set	mips0			\n");
+@@ -159,6 +162,7 @@ static inline void check_wait(void)
+ 	case CPU_5KC:
+ 	case CPU_25KF:
+  	case CPU_PR4450:
++	case CPU_CAVIUM_OCTEON:
+ 		cpu_wait = r4k_wait;
+ 		break;
+ 
+@@ -756,6 +760,34 @@ static inline void cpu_probe_philips(str
+ 	}
+ }
+ 
++static inline void cpu_probe_cavium(struct cpuinfo_mips *c)
++{
++	switch (c->processor_id & 0xff00) {
++	case PRID_IMP_CAVIUM_CN38XX:
++	case PRID_IMP_CAVIUM_CN31XX:
++	case PRID_IMP_CAVIUM_CN30XX:
++	case PRID_IMP_CAVIUM_CN58XX:
++	case PRID_IMP_CAVIUM_CN56XX:
++	case PRID_IMP_CAVIUM_CN50XX:
++	case PRID_IMP_CAVIUM_CN52XX:
++	case PRID_IMP_CAVIUM_CN51XX:
++		c->cputype = CPU_CAVIUM_OCTEON;
++		break;
++	default:
++		printk("WARNING: Unknown Octeon chip!\n");
++		c->cputype = CPU_CAVIUM_OCTEON;
++		break;
++	}
++
++	c->isa_level = MIPS_CPU_ISA_M64R2;
++	c->options = MIPS_CPU_TLB |     /* CPU has TLB */
++ 				MIPS_CPU_4KEX |     /* "R4K" exception model */
++				MIPS_CPU_COUNTER |  /* Cycle count/compare */
++				MIPS_CPU_WATCH |    /* watchpoint registers */
++				MIPS_CPU_EJTAG |    /* EJTAG exception */
++				MIPS_CPU_LLSC;      /* CPU has ll/sc instructions */
++	decode_config1(c);
++}
+ 
+ __init void cpu_probe(void)
+ {
+@@ -785,6 +817,9 @@ __init void cpu_probe(void)
+  	case PRID_COMP_PHILIPS:
+ 		cpu_probe_philips(c);
+ 		break;
++	case PRID_COMP_CAVIUM:
++		cpu_probe_cavium(c);
++		break;
+ 	default:
+ 		c->cputype = CPU_UNKNOWN;
+ 	}
+--- a/arch/mips/kernel/entry.S
++++ b/arch/mips/kernel/entry.S
+@@ -185,9 +185,11 @@ syscall_exit_work:
+  * For C code use the inline version named instruction_hazard().
+  */
+ LEAF(mips_ihb)
++	.set push
+ 	.set	mips32r2
+ 	jr.hb	ra
+ 	nop
++	.set pop
+ 	END(mips_ihb)
+ 
+ #endif /* CONFIG_CPU_MIPSR2 or CONFIG_MIPS_MT */
+--- a/arch/mips/kernel/head.S
++++ b/arch/mips/kernel/head.S
+@@ -114,7 +114,11 @@
+ 	.endm
+ 
+ 	.macro	setup_c0_status_pri
+-#ifdef CONFIG_64BIT
++#if defined(CONFIG_64BIT) || defined(CONFIG_CPU_CAVIUM_OCTEON)
++	/*
++	 * Note: We always set ST0_KX on Octeon since IO addresses are at 
++	 * 64bit addresses. Keep in mind this also moves the TLB handler. 
++	 */
+ 	setup_c0_status ST0_KX 0
+ #else
+ 	setup_c0_status 0 0
+@@ -122,7 +126,11 @@
+ 	.endm
+ 
+ 	.macro	setup_c0_status_sec
+-#ifdef CONFIG_64BIT
++#if defined(CONFIG_64BIT) || defined(CONFIG_CPU_CAVIUM_OCTEON)
++	/*
++	 * Note: We always set ST0_KX on Octeon since IO addresses are at 
++	 * 64bit addresses. Keep in mind this also moves the TLB handler. 
++	 */
+ 	setup_c0_status ST0_KX ST0_BEV
+ #else
+ 	setup_c0_status 0 ST0_BEV
+--- a/arch/mips/kernel/irq.c
++++ b/arch/mips/kernel/irq.c
+@@ -99,9 +99,9 @@ int show_interrupts(struct seq_file *p,
+ 	unsigned long flags;
+ 
+ 	if (i == 0) {
+-		seq_printf(p, "           ");
++		seq_printf(p, "          ");
+ 		for_each_online_cpu(j)
+-			seq_printf(p, "CPU%d       ",j);
++			seq_printf(p, "CPU%02d      ",j);
+ 		seq_putc(p, '\n');
+ 	}
+ 
+--- a/arch/mips/kernel/Makefile
++++ b/arch/mips/kernel/Makefile
+@@ -32,6 +32,7 @@ obj-$(CONFIG_CPU_SB1)		+= r4k_fpu.o r4k_
+ obj-$(CONFIG_CPU_MIPS32)	+= r4k_fpu.o r4k_switch.o
+ obj-$(CONFIG_CPU_MIPS64)	+= r4k_fpu.o r4k_switch.o
+ obj-$(CONFIG_CPU_R6000)		+= r6000_fpu.o r4k_switch.o
++obj-$(CONFIG_CPU_CAVIUM_OCTEON)	+= octeon_switch.o
+ 
+ obj-$(CONFIG_SMP)		+= smp.o
+ 
+@@ -49,6 +50,7 @@ obj-$(CONFIG_IRQ_CPU_RM7K)	+= irq-rm7000
+ obj-$(CONFIG_IRQ_CPU_RM9K)	+= irq-rm9000.o
+ obj-$(CONFIG_IRQ_MV64340)	+= irq-mv6434x.o
+ obj-$(CONFIG_MIPS_BOARDS_GEN)	+= irq-msc01.o
++obj-$(CONFIG_IRQ_CPU_OCTEON)	+= irq-octeon.o
+ 
+ obj-$(CONFIG_32BIT)		+= scall32-o32.o
+ obj-$(CONFIG_64BIT)		+= scall64-64.o
+--- a/arch/mips/kernel/proc.c
++++ b/arch/mips/kernel/proc.c
+@@ -84,6 +84,7 @@ static const char *cpu_name[] = {
+ 	[CPU_VR4181A]	= "NEC VR4181A",
+ 	[CPU_SR71000]	= "Sandcraft SR71000",
+ 	[CPU_PR4450]	= "Philips PR4450",
++	[CPU_CAVIUM_OCTEON] = "Cavium Networks Octeon",
+ };
+ 
+ 
+--- a/arch/mips/kernel/ptrace.c
++++ b/arch/mips/kernel/ptrace.c
+@@ -40,6 +40,11 @@
+ #include <asm/bootinfo.h>
+ #include <asm/reg.h>
+ 
++#if defined(CONFIG_CAVIUM_OCTEON_USER_MEM) && defined(CONFIG_64BIT)
++#include "cvmx-app-init.h"
++extern cvmx_bootinfo_t *octeon_bootinfo;
++#endif
++
+ /*
+  * Called by kernel/ptrace.c when detaching..
+  *
+@@ -179,6 +184,39 @@ long arch_ptrace(struct task_struct *chi
+ 		unsigned long tmp;
+ 		int copied;
+ 
++#if defined(CONFIG_CAVIUM_OCTEON_USER_IO) && defined(CONFIG_64BIT)
++		/* check whether its a XKPHYS IO addr (we only allow the 0x80xx.. alias) */
++		if (((unsigned long)addr >> 48) == 0x8001) {
++			ret = put_user(*(unsigned long*)addr, (unsigned long __user *) data);
++			break;
++		}
++#if defined(CONFIG_CAVIUM_OCTEON_USER_MEM)
++		/* check whether its a XKPHYS MEM addr */
++		if (((unsigned long)addr >> 48) == 0x8000) {
++			ret = -EIO;		
++			/* ensure that task is 64 bit */
++			if (child->thread.mflags & MF_32BIT_ADDR)
++				break;
++
++			/* extract phy addr from XKPHYS alias */
++			tmp = (unsigned long)addr - 0x8000000000000000ull;
++
++			/* check for boot-bus addr range */
++			if ((tmp >= 0x10000000) && (tmp < 0x20000000)) 
++				break;
++			/* this is for the dram_size comparison below */
++			if ((tmp >= 0x410000000ull) && (tmp < 0x420000000ull))
++				tmp -= 0x400000000ull;
++
++			/* verify that "addr" is within installed dram */
++			if (tmp <= ((octeon_bootinfo->dram_size<<20) - sizeof(tmp)))  {
++				ret = put_user(*(unsigned long*)addr, (unsigned long __user *) data);
++			}
++			break;
++		}
++#endif
++#endif
++
+ 		copied = access_process_vm(child, addr, &tmp, sizeof(tmp), 0);
+ 		ret = -EIO;
+ 		if (copied != sizeof(tmp))
+--- a/arch/mips/kernel/scall64-n32.S
++++ b/arch/mips/kernel/scall64-n32.S
+@@ -219,7 +219,7 @@ EXPORT(sysn32_call_table)
+ 	PTR	compat_sys_getrusage
+ 	PTR	compat_sys_sysinfo
+ 	PTR	compat_sys_times
+-	PTR	sys32_ptrace
++	PTR	sys_ptrace			/* Use 64bit ptrace since 32bit one breaks N32 GDB */
+ 	PTR	sys_getuid			/* 6100 */
+ 	PTR	sys_syslog
+ 	PTR	sys_getgid
+@@ -375,7 +375,7 @@ EXPORT(sysn32_call_table)
+ 	PTR	sys_mkdirat
+ 	PTR	sys_mknodat
+ 	PTR	sys_fchownat
+-	PTR	sys_futimesat			/* 6255 */
++	PTR	compat_sys_futimesat		/* 6255 */
+ 	PTR	sys_newfstatat
+ 	PTR	sys_unlinkat
+ 	PTR	sys_renameat
+@@ -390,7 +390,7 @@ EXPORT(sysn32_call_table)
+ 	PTR	sys_splice
+ 	PTR	sys_sync_file_range
+ 	PTR	sys_tee
+-	PTR	sys_vmsplice			/* 6270 */
++	PTR	compat_sys_vmsplice		/* 6270 */ /* Switch from sys_vmsplice to get LTP vmsplice01 to work */
+ 	PTR	sys_move_pages
+ 	PTR	compat_sys_set_robust_list
+ 	PTR	compat_sys_get_robust_list
+--- a/arch/mips/kernel/smp.c
++++ b/arch/mips/kernel/smp.c
+@@ -86,7 +86,11 @@ asmlinkage __cpuinit void start_secondar
+ 	 * to an option instead of something based on .cputype
+ 	 */
+ 
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
++    /* There is no reason to waste time doing this on Octeon. All the cores
++        are on the same chip and are the same speed by definition */
+ 	calibrate_delay();
++#endif
+ 	preempt_disable();
+ 	cpu = smp_processor_id();
+ 	cpu_data[cpu].udelay_val = loops_per_jiffy;
+@@ -238,12 +242,14 @@ void __init smp_prepare_cpus(unsigned in
+ /* preload SMP state for boot cpu */
+ void __devinit smp_prepare_boot_cpu(void)
+ {
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 	/*
+ 	 * This assumes that bootup is always handled by the processor
+ 	 * with the logic and physical number 0.
+ 	 */
+ 	__cpu_number_map[0] = 0;
+ 	__cpu_logical_map[0] = 0;
++#endif
+ 	cpu_set(0, phys_cpu_present_map);
+ 	cpu_set(0, cpu_online_map);
+ 	cpu_set(0, cpu_callin_map);
+--- a/arch/mips/kernel/syscall.c
++++ b/arch/mips/kernel/syscall.c
+@@ -73,7 +73,14 @@ unsigned long arch_get_unmapped_area(str
+ 
+ 	task_size = STACK_TOP;
+ 
++	if (len > task_size)
++		return -ENOMEM;
++
+ 	if (flags & MAP_FIXED) {
++		/* Even MAP_FIXED mappings must reside within task_size.  */
++		if (task_size - len < addr)
++			return -EINVAL;
++
+ 		/*
+ 		 * We do not accept a shared mapping if it would violate
+ 		 * cache aliasing constraints.
+@@ -83,8 +90,6 @@ unsigned long arch_get_unmapped_area(str
+ 		return addr;
+ 	}
+ 
+-	if (len > task_size)
+-		return -ENOMEM;
+ 	do_color_align = 0;
+ 	if (filp || (flags & MAP_SHARED))
+ 		do_color_align = 1;
+@@ -276,6 +281,9 @@ asmlinkage int sys_set_thread_area(unsig
+ 	if (cpu_has_userlocal)
+ 		write_c0_userlocal(addr);
+ 
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++	FAST_ACCESS_THREAD_REGISTER = addr;
++#endif
+ 	return 0;
+ }
+ 
+--- a/arch/mips/kernel/unaligned.c
++++ b/arch/mips/kernel/unaligned.c
+@@ -505,6 +505,43 @@ asmlinkage void do_ade(struct pt_regs *r
+ 	if (do_dsemulret(regs))
+ 		return;
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON) && (CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE > 0)
++{
++    /* This section of code allows tasks to access CVMSEG addresses. These are
++        special addresses into the Octeon L1 Cache that can be used as fast
++        scratch memory. By default access to this memory is disabled so we
++        don't have to save it on context switch. When a userspace task
++        references one of these addresses, we enable the region and size it
++        to match the app */
++    const unsigned long CVMSEG_BASE  = (short)0x8000;
++    const unsigned long CVMSEG_IO    = (short)0xa200;
++    uint64_t cvmmemctl               = __read_64bit_c0_register($11, 7);
++    unsigned long cvmseg_size        = (cvmmemctl&0x3f) * 128;
++
++    if ((regs->cp0_badvaddr==CVMSEG_IO) ||
++        ((regs->cp0_badvaddr>=CVMSEG_BASE) && (regs->cp0_badvaddr<CVMSEG_BASE + cvmseg_size)))
++    {
++        /* Make sure all async operations are done */
++        asm volatile ("synciobdma" ::: "memory");
++        /* Enable userspace access to CVMSEG */
++        cvmmemctl |= 1<<6;
++        __write_64bit_c0_register($11, 7, cvmmemctl);
++
++        //printk("Enabling CVMSEG access for task %p (%lu lines)\n", current, cvmmemctl&0x3f);
++
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++        /* Restore the processes CVMSEG data. Leave off the last 8 bytes since
++            the kernel stores the thread pointer there */
++        memcpy((void*)CVMSEG_BASE, current->thread.cvmseg.cvmseg, cvmseg_size-8);
++#else
++        /* Restore the processes CVMSEG data */
++        memcpy((void*)CVMSEG_BASE, current->thread.cvmseg.cvmseg, cvmseg_size);
++#endif
++        return;
++    }
++}
++#endif
++
+ 	/* Otherwise handle as normal */
+ 
+ 	/*
+--- a/arch/mips/kernel/vmlinux.lds.S
++++ b/arch/mips/kernel/vmlinux.lds.S
+@@ -80,7 +80,11 @@ SECTIONS
+   . = ALIGN(_PAGE_SIZE);
+   __nosave_end = .;
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++  . = ALIGN(128);
++#else
+   . = ALIGN(32);
++#endif
+   .data.cacheline_aligned : { *(.data.cacheline_aligned) }
+ 
+   _edata =  .;			/* End of data section */
+@@ -119,7 +123,11 @@ SECTIONS
+   .init.ramfs : { *(.init.ramfs) }
+   __initramfs_end = .;
+ #endif
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++  . = ALIGN(128);
++#else
+   . = ALIGN(32);
++#endif
+   __per_cpu_start = .;
+   .data.percpu  : { *(.data.percpu) }
+   __per_cpu_end = .;
+--- a/arch/mips/lib-32/Makefile
++++ b/arch/mips/lib-32/Makefile
+@@ -21,3 +21,4 @@ obj-$(CONFIG_CPU_SB1)		+= dump_tlb.o
+ obj-$(CONFIG_CPU_TX39XX)	+= r3k_dump_tlb.o
+ obj-$(CONFIG_CPU_TX49XX)	+= dump_tlb.o
+ obj-$(CONFIG_CPU_VR41XX)	+= dump_tlb.o
++obj-$(CONFIG_CPU_CAVIUM_OCTEON)	+= dump_tlb.o
+--- a/arch/mips/lib-64/dump_tlb.c
++++ b/arch/mips/lib-64/dump_tlb.c
+@@ -167,13 +167,26 @@ void dump_list_process(struct task_struc
+ 
+ 	val = pte_val(page);
+ 	if (val & _PAGE_PRESENT) printk("present ");
++#ifdef _PAGE_READ
+ 	if (val & _PAGE_READ) printk("read ");
++#endif
+ 	if (val & _PAGE_WRITE) printk("write ");
+ 	if (val & _PAGE_ACCESSED) printk("accessed ");
+ 	if (val & _PAGE_MODIFIED) printk("modified ");
++#ifdef _PAGE_R4KBUG
+ 	if (val & _PAGE_R4KBUG) printk("r4kbug ");
++#endif
+ 	if (val & _PAGE_GLOBAL) printk("global ");
+ 	if (val & _PAGE_VALID) printk("valid ");
++#ifdef _PAGE_HUGE
++	if (val & _PAGE_HUGE) printk("huge ");
++#endif
++#ifdef _PAGE_NO_READ
++	if (val & _PAGE_NO_READ) printk("noread ");
++#endif
++#ifdef _PAGE_NO_EXEC
++	if (val & _PAGE_NO_EXEC) printk("noexec ");
++#endif
+ 	printk("\n");
+ }
+ 
+--- a/arch/mips/lib-64/Makefile
++++ b/arch/mips/lib-64/Makefile
+@@ -21,3 +21,4 @@ obj-$(CONFIG_CPU_SB1)		+= dump_tlb.o
+ obj-$(CONFIG_CPU_TX39XX)	+= r3k_dump_tlb.o
+ obj-$(CONFIG_CPU_TX49XX)	+= dump_tlb.o
+ obj-$(CONFIG_CPU_VR41XX)	+= dump_tlb.o
++obj-$(CONFIG_CPU_CAVIUM_OCTEON)	+= dump_tlb.o
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -141,6 +141,8 @@ cflags-$(CONFIG_CPU_R8000)	+= -march=r80
+ cflags-$(CONFIG_CPU_R10000)	+= $(call cc-option,-march=r10000,-march=r8000) \
+ 			-Wa,--trap
+ 
++cflags-$(CONFIG_CPU_CAVIUM_OCTEON)+= $(call cc-option,-march=octeon) -Wa,--trap
++
+ ifdef CONFIG_CPU_SB1
+ ifdef CONFIG_SB1_PASS_1_WORKAROUNDS
+ MODFLAGS	+= -msb1-pass1-workarounds
+@@ -605,6 +607,24 @@ core-$(CONFIG_TOSHIBA_RBTX4938) += arch/
+ core-$(CONFIG_TOSHIBA_RBTX4938) += arch/mips/tx4938/common/
+ load-$(CONFIG_TOSHIBA_RBTX4938) += 0xffffffff80100000
+ 
++#
++# Cavium Octeon
++#
++core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/
++core-$(CONFIG_CPU_CAVIUM_OCTEON)	+= arch/mips/cavium-octeon/gpl-executive/
++cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= -Iinclude/asm-mips/mach-cavium-octeon -I${OCTEON_ROOT}/target/include
++cflags-$(CONFIG_CPU_CAVIUM_OCTEON)	+= $(OCTEON_CPPFLAGS_GLOBAL_ADD)
++ifdef CONFIG_CAVIUM_OCTEON_2ND_KERNEL
++load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff84100000
++else
++#This would be the correct address format for linking the kernel at 1MB for DDR region 0
++load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xffffffff80100000
++#This would be the correct address format for linking the kernel at 512MB for DDR region 2
++#load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xa800000020000000
++#This would be the correct address format for linking the kernel at 16.25GB for DDR regoin 1
++#load-$(CONFIG_CPU_CAVIUM_OCTEON) 	+= 0xa800000410000000
++endif
++
+ # temporary until string.h is fixed
+ cflags-y += -ffreestanding
+ 
+--- a/arch/mips/math-emu/cp1emu.c
++++ b/arch/mips/math-emu/cp1emu.c
+@@ -68,7 +68,9 @@ static int fpux_emu(struct pt_regs *,
+ 
+ /* Further private data for which no space exists in mips_fpu_struct */
+ 
++#ifdef MIPS_FPU_EMULATOR_STATS_ENABLED
+ struct mips_fpu_emulator_stats fpuemustats;
++#endif
+ 
+ /* Control registers */
+ 
+@@ -208,7 +210,7 @@ static int cop1Emulate(struct pt_regs *x
+ 	unsigned int cond;
+ 
+ 	if (get_user(ir, (mips_instruction __user *) xcp->cp0_epc)) {
+-		fpuemustats.errors++;
++		FPUEMUSTATS_INC(errors);
+ 		return SIGBUS;
+ 	}
+ 
+@@ -239,7 +241,7 @@ static int cop1Emulate(struct pt_regs *x
+ 			return SIGILL;
+ 		}
+ 		if (get_user(ir, (mips_instruction __user *) emulpc)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		/* __compute_return_epc() will have updated cp0_epc */
+@@ -252,16 +254,16 @@ static int cop1Emulate(struct pt_regs *x
+ 	}
+ 
+       emul:
+-	fpuemustats.emulated++;
++	FPUEMUSTATS_INC(emulated);
+ 	switch (MIPSInst_OPCODE(ir)) {
+ 	case ldc1_op:{
+ 		u64 __user *va = (u64 __user *) (xcp->regs[MIPSInst_RS(ir)] +
+ 			MIPSInst_SIMM(ir));
+ 		u64 val;
+ 
+-		fpuemustats.loads++;
++		FPUEMUSTATS_INC(loads);
+ 		if (get_user(val, va)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		DITOREG(val, MIPSInst_RT(ir));
+@@ -273,10 +275,10 @@ static int cop1Emulate(struct pt_regs *x
+ 			MIPSInst_SIMM(ir));
+ 		u64 val;
+ 
+-		fpuemustats.stores++;
++		FPUEMUSTATS_INC(stores);
+ 		DIFROMREG(val, MIPSInst_RT(ir));
+ 		if (put_user(val, va)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		break;
+@@ -287,9 +289,9 @@ static int cop1Emulate(struct pt_regs *x
+ 			MIPSInst_SIMM(ir));
+ 		u32 val;
+ 
+-		fpuemustats.loads++;
++		FPUEMUSTATS_INC(loads);
+ 		if (get_user(val, va)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		SITOREG(val, MIPSInst_RT(ir));
+@@ -301,10 +303,10 @@ static int cop1Emulate(struct pt_regs *x
+ 			MIPSInst_SIMM(ir));
+ 		u32 val;
+ 
+-		fpuemustats.stores++;
++		FPUEMUSTATS_INC(stores);
+ 		SIFROMREG(val, MIPSInst_RT(ir));
+ 		if (put_user(val, va)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		break;
+@@ -432,7 +434,7 @@ static int cop1Emulate(struct pt_regs *x
+ 
+ 				if (get_user(ir,
+ 				    (mips_instruction __user *) xcp->cp0_epc)) {
+-					fpuemustats.errors++;
++					FPUEMUSTATS_INC(errors);
+ 					return SIGBUS;
+ 				}
+ 
+@@ -598,7 +600,7 @@ static int fpux_emu(struct pt_regs *xcp,
+ {
+ 	unsigned rcsr = 0;	/* resulting csr */
+ 
+-	fpuemustats.cp1xops++;
++	FPUEMUSTATS_INC(cp1xops);
+ 
+ 	switch (MIPSInst_FMA_FFMT(ir)) {
+ 	case s_fmt:{		/* 0 */
+@@ -613,9 +615,9 @@ static int fpux_emu(struct pt_regs *xcp,
+ 			va = (void __user *) (xcp->regs[MIPSInst_FR(ir)] +
+ 				xcp->regs[MIPSInst_FT(ir)]);
+ 
+-			fpuemustats.loads++;
++			FPUEMUSTATS_INC(loads);
+ 			if (get_user(val, va)) {
+-				fpuemustats.errors++;
++				FPUEMUSTATS_INC(errors);
+ 				return SIGBUS;
+ 			}
+ 			SITOREG(val, MIPSInst_FD(ir));
+@@ -625,11 +627,11 @@ static int fpux_emu(struct pt_regs *xcp,
+ 			va = (void __user *) (xcp->regs[MIPSInst_FR(ir)] +
+ 				xcp->regs[MIPSInst_FT(ir)]);
+ 
+-			fpuemustats.stores++;
++			FPUEMUSTATS_INC(stores);
+ 
+ 			SIFROMREG(val, MIPSInst_FS(ir));
+ 			if (put_user(val, va)) {
+-				fpuemustats.errors++;
++				FPUEMUSTATS_INC(errors);
+ 				return SIGBUS;
+ 			}
+ 			break;
+@@ -690,9 +692,9 @@ static int fpux_emu(struct pt_regs *xcp,
+ 			va = (void __user *) (xcp->regs[MIPSInst_FR(ir)] +
+ 				xcp->regs[MIPSInst_FT(ir)]);
+ 
+-			fpuemustats.loads++;
++			FPUEMUSTATS_INC(loads);
+ 			if (get_user(val, va)) {
+-				fpuemustats.errors++;
++				FPUEMUSTATS_INC(errors);
+ 				return SIGBUS;
+ 			}
+ 			DITOREG(val, MIPSInst_FD(ir));
+@@ -702,10 +704,10 @@ static int fpux_emu(struct pt_regs *xcp,
+ 			va = (void __user *) (xcp->regs[MIPSInst_FR(ir)] +
+ 				xcp->regs[MIPSInst_FT(ir)]);
+ 
+-			fpuemustats.stores++;
++			FPUEMUSTATS_INC(stores);
+ 			DIFROMREG(val, MIPSInst_FS(ir));
+ 			if (put_user(val, va)) {
+-				fpuemustats.errors++;
++				FPUEMUSTATS_INC(errors);
+ 				return SIGBUS;
+ 			}
+ 			break;
+@@ -772,7 +774,7 @@ static int fpu_emu(struct pt_regs *xcp,
+ #endif
+ 	} rv;			/* resulting value */
+ 
+-	fpuemustats.cp1ops++;
++	FPUEMUSTATS_INC(cp1ops);
+ 	switch (rfmt = (MIPSInst_FFMT(ir) & 0xf)) {
+ 	case s_fmt:{		/* 0 */
+ 		union {
+@@ -1243,7 +1245,7 @@ int fpu_emulator_cop1Handler(struct pt_r
+ 		prevepc = xcp->cp0_epc;
+ 
+ 		if (get_user(insn, (mips_instruction __user *) xcp->cp0_epc)) {
+-			fpuemustats.errors++;
++			FPUEMUSTATS_INC(errors);
+ 			return SIGBUS;
+ 		}
+ 		if (insn == 0)
+--- a/arch/mips/math-emu/dsemul.c
++++ b/arch/mips/math-emu/dsemul.c
+@@ -101,7 +101,7 @@ int mips_dsemul(struct pt_regs *regs, mi
+ 	err |= __put_user(cpc, &fr->epc);
+ 
+ 	if (unlikely(err)) {
+-		fpuemustats.errors++;
++		FPUEMUSTATS_INC(errors);
+ 		return SIGBUS;
+ 	}
+ 
+@@ -138,7 +138,7 @@ int do_dsemulret(struct pt_regs *xcp)
+ 	err |= __get_user(cookie, &fr->cookie);
+ 
+ 	if (unlikely(err || (insn != BADINST) || (cookie != BD_COOKIE))) {
+-		fpuemustats.errors++;
++		FPUEMUSTATS_INC(errors);
+ 		return 0;
+ 	}
+ 
+--- a/arch/mips/mm/cache.c
++++ b/arch/mips/mm/cache.c
+@@ -161,6 +161,12 @@ void __init cpu_cache_init(void)
+ 		sb1_cache_init();
+ 		return;
+ 	}
++	if (cpu_has_octeon_cache) {
++		extern void __weak octeon_cache_init(void);
++
++		octeon_cache_init();
++		return;
++	}
+ 
+ 	panic(cache_panic);
+ }
+--- a/arch/mips/mm/fault.c
++++ b/arch/mips/mm/fault.c
+@@ -47,6 +47,20 @@ asmlinkage void do_page_fault(struct pt_
+ 	       field, regs->cp0_epc);
+ #endif
+ 
++#ifdef CONFIG_CAVIUM_OCTEON_HW_FIX_UNALIGNED
++	/*
++     * Normally the FPU emulator uses a load word from address one to retake
++     * control of the CPU after executing the instruction in the delay slot
++     * of an emulated branch. The Octeon hardware unaligned access fix changes
++     * this from an address exception into a TLB exception. This code checks
++     * to see if this page fault was caused by an FPU emulation.
++     *
++	 * Terminate if exception was recognized as a delay slot return */
++	extern int do_dsemulret(struct pt_regs *);
++	if (do_dsemulret(regs))
++		return;
++#endif
++
+ 	info.si_code = SEGV_MAPERR;
+ 
+ 	/*
+--- a/arch/mips/mm/init.c
++++ b/arch/mips/mm/init.c
+@@ -141,7 +141,7 @@ void *kmap_coherent(struct page *page, u
+ #if defined(CONFIG_64BIT_PHYS_ADDR) && defined(CONFIG_CPU_MIPS32_R1)
+ 	entrylo = pte.pte_high;
+ #else
+-	entrylo = pte_val(pte) >> 6;
++	entrylo = pte_to_entrylo(pte_val(pte));
+ #endif
+ 
+ 	ENTER_CRITICAL(flags);
+--- a/arch/mips/mm/Makefile
++++ b/arch/mips/mm/Makefile
+@@ -2,12 +2,20 @@
+ # Makefile for the Linux/MIPS-specific parts of the memory manager.
+ #
+ 
+-obj-y				+= cache.o dma-default.o extable.o fault.o \
++ifndef CONFIG_CPU_CAVIUM_OCTEON
++# The Octeon uses its own version of the DMA mapping routines
++# to allow 32bit devices to access memory higher than 4GB. The
++# Octeon version of this file is arch/mips/cavium-octeon/dma-octeon.c
++obj-y				+= dma-default.o
++endif
++
++obj-y				+= cache.o extable.o fault.o \
+ 				   init.o pgtable.o tlbex.o tlbex-fault.o
+ 
+ obj-$(CONFIG_32BIT)		+= ioremap.o pgtable-32.o
+ obj-$(CONFIG_64BIT)		+= pgtable-64.o
+ obj-$(CONFIG_HIGHMEM)		+= highmem.o
++obj-$(CONFIG_HUGETLB_PAGE)	+= hugetlbpage.o
+ 
+ obj-$(CONFIG_CPU_MIPS32)	+= c-r4k.o cex-gen.o pg-r4k.o tlb-r4k.o
+ obj-$(CONFIG_CPU_MIPS64)	+= c-r4k.o cex-gen.o pg-r4k.o tlb-r4k.o
+@@ -26,6 +34,7 @@ obj-$(CONFIG_CPU_SB1)		+= c-sb1.o cerr-s
+ obj-$(CONFIG_CPU_TX39XX)	+= c-tx39.o pg-r4k.o tlb-r3k.o
+ obj-$(CONFIG_CPU_TX49XX)	+= c-r4k.o cex-gen.o pg-r4k.o tlb-r4k.o
+ obj-$(CONFIG_CPU_VR41XX)	+= c-r4k.o cex-gen.o pg-r4k.o tlb-r4k.o
++obj-$(CONFIG_CPU_CAVIUM_OCTEON)	+= c-octeon.o cex-oct.o pg-octeon.o tlb-r4k.o
+ 
+ obj-$(CONFIG_IP22_CPU_SCACHE)	+= sc-ip22.o
+ obj-$(CONFIG_R5000_CPU_SCACHE)  += sc-r5k.o
+--- a/arch/mips/mm/pgtable-64.c
++++ b/arch/mips/mm/pgtable-64.c
+@@ -27,8 +27,8 @@ void pgd_init(unsigned long page)
+ 		p[4] = (unsigned long) invalid_pmd_table;
+ 		p[5] = (unsigned long) invalid_pmd_table;
+ 		p[6] = (unsigned long) invalid_pmd_table;
+-		p[7] = (unsigned long) invalid_pmd_table;
+ 		p += 8;
++		p[-1] = (unsigned long) invalid_pmd_table;
+ 	}
+ }
+ 
+@@ -47,8 +47,8 @@ void pmd_init(unsigned long addr, unsign
+ 		p[4] = (unsigned long)pagetable;
+ 		p[5] = (unsigned long)pagetable;
+ 		p[6] = (unsigned long)pagetable;
+-		p[7] = (unsigned long)pagetable;
+ 		p += 8;
++		p[-1] = (unsigned long)pagetable;
+ 	}
+ }
+ 
+--- a/arch/mips/mm/tlbex.c
++++ b/arch/mips/mm/tlbex.c
+@@ -78,7 +78,7 @@ enum fields
+ 	SET = 0x200
+ };
+ 
+-#define OP_MASK		0x2f
++#define OP_MASK		0x3f
+ #define OP_SH		26
+ #define RS_MASK		0x1f
+ #define RS_SH		21
+@@ -92,7 +92,7 @@ enum fields
+ #define IMM_SH		0
+ #define JIMM_MASK	0x3ffffff
+ #define JIMM_SH		0
+-#define FUNC_MASK	0x2f
++#define FUNC_MASK	0x3f
+ #define FUNC_SH		0
+ #define SET_MASK	0x7
+ #define SET_SH		0
+@@ -102,12 +102,17 @@ enum opcode {
+ 	insn_addu, insn_addiu, insn_and, insn_andi, insn_beq,
+ 	insn_beql, insn_bgez, insn_bgezl, insn_bltz, insn_bltzl,
+ 	insn_bne, insn_daddu, insn_daddiu, insn_dmfc0, insn_dmtc0,
+-	insn_dsll, insn_dsll32, insn_dsra, insn_dsrl, insn_dsrl32,
++	insn_dsll, insn_dsll32, insn_dsra, insn_dsrl, insn_drotr, insn_dsrl32,
+ 	insn_dsubu, insn_eret, insn_j, insn_jal, insn_jr, insn_ld,
+ 	insn_ll, insn_lld, insn_lui, insn_lw, insn_mfc0, insn_mtc0,
+ 	insn_ori, insn_rfe, insn_sc, insn_scd, insn_sd, insn_sll,
+ 	insn_sra, insn_srl, insn_subu, insn_sw, insn_tlbp, insn_tlbwi,
+-	insn_tlbwr, insn_xor, insn_xori
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	insn_tlbwr, insn_xor, insn_xori, insn_nor,
++	insn_bbit1, insn_bbit132, insn_bbit0, insn_bbit032, insn_dins, insn_dinsu
++#else
++	insn_tlbwr, insn_xor, insn_xori, insn_nor
++#endif
+ };
+ 
+ struct insn {
+@@ -145,6 +150,7 @@ static __initdata struct insn insn_table
+ 	{ insn_dsll32, M(spec_op,0,0,0,0,dsll32_op), RT | RD | RE },
+ 	{ insn_dsra, M(spec_op,0,0,0,0,dsra_op), RT | RD | RE },
+ 	{ insn_dsrl, M(spec_op,0,0,0,0,dsrl_op), RT | RD | RE },
++	{ insn_drotr, M(spec_op,1,0,0,0,dsrl_op), RT | RD | RE },
+ 	{ insn_dsrl32, M(spec_op,0,0,0,0,dsrl32_op), RT | RD | RE },
+ 	{ insn_dsubu, M(spec_op,0,0,0,0,dsubu_op), RS | RT | RD },
+ 	{ insn_eret, M(cop0_op,cop_op,0,0,0,eret_op), 0 },
+@@ -173,6 +179,15 @@ static __initdata struct insn insn_table
+ 	{ insn_tlbwr, M(cop0_op,cop_op,0,0,0,tlbwr_op), 0 },
+ 	{ insn_xor, M(spec_op,0,0,0,0,xor_op), RS | RT | RD },
+ 	{ insn_xori, M(xori_op,0,0,0,0,0), RS | RT | UIMM },
++	{ insn_nor, M(spec_op,0,0,0,0,nor_op), RS | RT | RD },
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	{ insn_bbit1, M(swc2_op,0,0,0,0,0), RS | RT | BIMM },
++	{ insn_bbit132, M(sdc2_op,0,0,0,0,0), RS | RT | BIMM },
++	{ insn_bbit0, M(lwc2_op,0,0,0,0,0), RS | RT | BIMM },
++	{ insn_bbit032, M(ldc2_op,0,0,0,0,0), RS | RT | BIMM },
++	{ insn_dins, M(spec3_op,0,0,0,0,dins_op), RS | RT | RD | RE },
++	{ insn_dinsu, M(spec3_op,0,0,0,0,dinsu_op), RS | RT | RD | RE },
++#endif
+ 	{ insn_invalid, 0, 0 }
+ };
+ 
+@@ -367,6 +382,20 @@ static void __init build_insn(u32 **buf,
+ 		build_insn(buf, insn##op);			\
+ 	}
+ 
++#define I_u2u1msbu3(op)						\
++	static inline void __init i##op(u32 **buf, unsigned int a,	\
++		unsigned int b, unsigned int c, unsigned int d)	\
++	{							\
++		build_insn(buf, insn##op, b, a, c+d-1, c);	\
++	}
++
++#define I_u2u1msb33u3(op)						\
++	static inline void __init i##op(u32 **buf, unsigned int rt,	\
++		unsigned int rs, unsigned int pos, unsigned int size)	\
++	{							\
++		build_insn(buf, insn##op, rs, rt, pos+size-33, pos-32);	\
++	}
++
+ I_u2u1s3(_addiu);
+ I_u3u1u2(_addu);
+ I_u2u1u3(_andi);
+@@ -386,6 +415,7 @@ I_u2u1u3(_dsll);
+ I_u2u1u3(_dsll32);
+ I_u2u1u3(_dsra);
+ I_u2u1u3(_dsrl);
++I_u2u1u3(_drotr);
+ I_u2u1u3(_dsrl32);
+ I_u3u1u2(_dsubu);
+ I_0(_eret);
+@@ -414,6 +444,15 @@ I_0(_tlbwi);
+ I_0(_tlbwr);
+ I_u3u1u2(_xor)
+ I_u2u1u3(_xori);
++I_u3u1u2(_nor);
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++I_u1u2s3(_bbit1);
++I_u1u2s3(_bbit132);
++I_u1u2s3(_bbit0);
++I_u1u2s3(_bbit032);
++I_u2u1msbu3(_dins);
++I_u2u1msb33u3(_dinsu);
++#endif
+ 
+ /*
+  * handling labels
+@@ -435,6 +474,7 @@ enum label_id {
+ 	label_nopage_tlbm,
+ 	label_smp_pgtable_change,
+ 	label_r3000_write_probe_fail,
++	label_tlb_huge_update,
+ };
+ 
+ struct label {
+@@ -470,6 +510,7 @@ L_LA(_nopage_tlbs)
+ L_LA(_nopage_tlbm)
+ L_LA(_smp_pgtable_change)
+ L_LA(_r3000_write_probe_fail)
++L_LA(_tlb_huge_update)
+ 
+ /* convenience macros for instructions */
+ #ifdef CONFIG_64BIT
+@@ -699,6 +740,33 @@ il_bgez(u32 **p, struct reloc **r, unsig
+ 	i_bgez(p, reg, 0);
+ }
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++static void __init il_bbit1(u32 **p, struct reloc **r, unsigned int reg,
++				unsigned int bit, enum label_id l)
++{
++	r_mips_pc16(r, *p, l);
++	i_bbit1(p, reg, bit, 0);
++}
++static void __init il_bbit132(u32 **p, struct reloc **r, unsigned int reg,
++				unsigned int bit, enum label_id l)
++{
++	r_mips_pc16(r, *p, l);
++	i_bbit132(p, reg, bit-32, 0);
++}
++static void __init il_bbit0(u32 **p, struct reloc **r, unsigned int reg,
++				unsigned int bit, enum label_id l)
++{
++	r_mips_pc16(r, *p, l);
++	i_bbit0(p, reg, bit, 0);
++}
++static void __init il_bbit032(u32 **p, struct reloc **r, unsigned int reg,
++				unsigned int bit, enum label_id l)
++{
++	r_mips_pc16(r, *p, l);
++	i_bbit032(p, reg, bit-32, 0);
++}
++#endif
++
+ /* The only general purpose registers allowed in TLB handlers. */
+ #define K0		26
+ #define K1		27
+@@ -709,6 +777,7 @@ il_bgez(u32 **p, struct reloc **r, unsig
+ #define C0_TCBIND	2, 2
+ #define C0_ENTRYLO1	3, 0
+ #define C0_CONTEXT	4, 0
++#define C0_PAGEMASK	5, 0
+ #define C0_BADVADDR	8, 0
+ #define C0_ENTRYHI	10, 0
+ #define C0_EPC		14, 0
+@@ -893,6 +962,7 @@ static __init void build_tlb_write_entry
+ 	case CPU_4KSC:
+ 	case CPU_20KC:
+ 	case CPU_25KF:
++	case CPU_CAVIUM_OCTEON:
+ 		tlbw(p);
+ 		break;
+ 
+@@ -968,6 +1038,167 @@ static __init void build_tlb_write_entry
+ 	}
+ }
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++
++static __init void build_huge_tlb_write_entry(u32 **p, struct label **l,
++					 struct reloc **r,
++					 unsigned int tmp,
++					 enum tlb_write_entry wmode)
++{
++	void(*tlbw)(u32 **) = NULL;
++
++	switch (wmode) {
++	case tlb_random: tlbw = i_tlbwr; break;
++	case tlb_indexed: tlbw = i_tlbwi; break;
++	}
++
++	/* Set huge page tlb entry size */
++	i_lui(p, tmp, PM_HUGE_MASK >> 16);
++	i_ori(p, tmp, tmp, PM_HUGE_MASK & 0xffff);
++	i_mtc0(p, tmp, C0_PAGEMASK);
++
++	switch (current_cpu_data.cputype) {
++	case CPU_R4000PC:
++	case CPU_R4000SC:
++	case CPU_R4000MC:
++	case CPU_R4400PC:
++	case CPU_R4400SC:
++	case CPU_R4400MC:
++		/*
++		 * This branch uses up a mtc0 hazard nop slot and saves
++		 * two nops after the tlbw instruction.
++		 */
++		il_bgezl(p, r, 0, label_tlbw_hazard);
++		tlbw(p);
++		l_tlbw_hazard(l, *p);
++		i_nop(p);
++		break;
++
++	case CPU_R4600:
++	case CPU_R4700:
++	case CPU_R5000:
++	case CPU_R5000A:
++		i_nop(p);
++		tlbw(p);
++		i_nop(p);
++		break;
++
++	case CPU_R4300:
++	case CPU_5KC:
++	case CPU_TX49XX:
++	case CPU_AU1000:
++	case CPU_AU1100:
++	case CPU_AU1500:
++	case CPU_AU1550:
++	case CPU_AU1200:
++	case CPU_PR4450:
++		i_nop(p);
++		tlbw(p);
++		break;
++
++	case CPU_R10000:
++	case CPU_R12000:
++	case CPU_4KC:
++	case CPU_SB1:
++	case CPU_4KSC:
++	case CPU_20KC:
++	case CPU_25KF:
++	case CPU_CAVIUM_OCTEON:
++		tlbw(p);
++		break;
++
++	case CPU_NEVADA:
++		i_nop(p); /* QED specifies 2 nops hazard */
++		/*
++		 * This branch uses up a mtc0 hazard nop slot and saves
++		 * a nop after the tlbw instruction.
++		 */
++		il_bgezl(p, r, 0, label_tlbw_hazard);
++		tlbw(p);
++		l_tlbw_hazard(l, *p);
++		break;
++
++	case CPU_RM7000:
++		i_nop(p);
++		i_nop(p);
++		i_nop(p);
++		i_nop(p);
++		tlbw(p);
++		break;
++
++	case CPU_4KEC:
++	case CPU_24K:
++	case CPU_34K:
++		i_ehb(p);
++		tlbw(p);
++		break;
++
++	case CPU_RM9000:
++		/*
++		 * When the JTLB is updated by tlbwi or tlbwr, a subsequent
++		 * use of the JTLB for instructions should not occur for 4
++		 * cpu cycles and use for data translations should not occur
++		 * for 3 cpu cycles.
++		 */
++		i_ssnop(p);
++		i_ssnop(p);
++		i_ssnop(p);
++		i_ssnop(p);
++		tlbw(p);
++		i_ssnop(p);
++		i_ssnop(p);
++		i_ssnop(p);
++		i_ssnop(p);
++		break;
++
++	case CPU_VR4111:
++	case CPU_VR4121:
++	case CPU_VR4122:
++	case CPU_VR4181:
++	case CPU_VR4181A:
++		i_nop(p);
++		i_nop(p);
++		tlbw(p);
++		i_nop(p);
++		i_nop(p);
++		break;
++
++	case CPU_VR4131:
++	case CPU_VR4133:
++	case CPU_R5432:
++		i_nop(p);
++		i_nop(p);
++		tlbw(p);
++		break;
++
++	default:
++		panic("No TLB refill handler yet (CPU type: %d)",
++		      current_cpu_data.cputype);
++		break;
++	}
++
++	/* Reset default page size */
++	if (PM_DEFAULT_MASK>>16)
++	{
++		i_lui(p, tmp, PM_DEFAULT_MASK >> 16);
++		i_ori(p, tmp, tmp, PM_DEFAULT_MASK & 0xffff);
++		i_mtc0(p, tmp, C0_PAGEMASK);
++	}
++	else if (PM_DEFAULT_MASK)
++	{
++		i_ori(p, tmp, 0, PM_DEFAULT_MASK);
++		i_mtc0(p, tmp, C0_PAGEMASK);
++	}
++	else
++		i_mtc0(p, 0, C0_PAGEMASK);
++
++	/* Jump past default page size TLB load */
++	il_b(p, r, label_leave);
++	i_nop(p);
++}
++
++#endif
++
+ #ifdef CONFIG_64BIT
+ /*
+  * TMP and PTR are scratch.
+@@ -1184,6 +1415,34 @@ static __init void build_get_ptep(u32 **
+ 	i_ADDU(p, ptr, ptr, tmp); /* add in offset */
+ }
+ 
++static __init void build_convert_pte_to_entrylo(u32 **p, unsigned int reg)
++{
++#if defined(CONFIG_USE_RI_XI_PAGE_BITS)
++	i_dsrl(p, reg, reg, __ilog2(_PAGE_NO_EXEC));
++	i_drotr(p, reg, reg, __ilog2(_PAGE_GLOBAL) - __ilog2(_PAGE_NO_EXEC));
++#elif defined(CONFIG_64BIT_PHYS_ADDR)
++	i_dsrl(p, reg, reg, 6);
++#else
++	i_SRL(p, reg, reg, 6);
++#endif
++}
++
++static __init void build_convert_pte_to_entrylo2(u32 **p, unsigned int e0, unsigned int e1)
++{
++#if defined(CONFIG_USE_RI_XI_PAGE_BITS)
++	i_dsrl(p, e0, e0, __ilog2(_PAGE_NO_EXEC));
++	i_dsrl(p, e1, e1, __ilog2(_PAGE_NO_EXEC));
++	i_drotr(p, e0, e0, __ilog2(_PAGE_GLOBAL) - __ilog2(_PAGE_NO_EXEC));
++	i_drotr(p, e1, e1, __ilog2(_PAGE_GLOBAL) - __ilog2(_PAGE_NO_EXEC));
++#elif defined(CONFIG_64BIT_PHYS_ADDR)
++	i_dsrl(p, e0, e0, 6);
++	i_dsrl(p, e1, e1, 6);
++#else
++	i_SRL(p, e0, e0, 6);
++	i_SRL(p, e1, e1, 6);
++#endif
++}
++
+ static __init void build_update_entries(u32 **p, unsigned int tmp,
+ 					unsigned int ptep)
+ {
+@@ -1195,9 +1454,8 @@ static __init void build_update_entries(
+ 	if (cpu_has_64bits) {
+ 		i_ld(p, tmp, 0, ptep); /* get even pte */
+ 		i_ld(p, ptep, sizeof(pte_t), ptep); /* get odd pte */
+-		i_dsrl(p, tmp, tmp, 6); /* convert to entrylo0 */
++		build_convert_pte_to_entrylo2(p, tmp, ptep);
+ 		i_mtc0(p, tmp, C0_ENTRYLO0); /* load it */
+-		i_dsrl(p, ptep, ptep, 6); /* convert to entrylo1 */
+ 		i_mtc0(p, ptep, C0_ENTRYLO1); /* load it */
+ 	} else {
+ 		int pte_off_even = sizeof(pte_t) / 2;
+@@ -1214,11 +1472,10 @@ static __init void build_update_entries(
+ 	i_LW(p, ptep, sizeof(pte_t), ptep); /* get odd pte */
+ 	if (r45k_bvahwbug())
+ 		build_tlb_probe_entry(p);
+-	i_SRL(p, tmp, tmp, 6); /* convert to entrylo0 */
++	build_convert_pte_to_entrylo2(p, tmp, ptep);
+ 	if (r4k_250MHZhwbug())
+ 		i_mtc0(p, 0, C0_ENTRYLO0);
+ 	i_mtc0(p, tmp, C0_ENTRYLO0); /* load it */
+-	i_SRL(p, ptep, ptep, 6); /* convert to entrylo1 */
+ 	if (r45k_bvahwbug())
+ 		i_mfc0(p, tmp, C0_INDEX);
+ 	if (r4k_250MHZhwbug())
+@@ -1227,6 +1484,54 @@ static __init void build_update_entries(
+ #endif
+ }
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++
++/*
++ * Check if Huge PTE is present, if so then jump to LABEL.
++ */
++static void __init
++build_is_huge_pte(u32 **p, struct reloc **r, unsigned int tmp,
++		unsigned int pmd, enum label_id lid)
++{
++	i_LW(p, tmp, 0, pmd);
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	il_bbit1(p, r, tmp, __ilog2(_PAGE_HUGE), lid);
++#else
++	i_andi(p, tmp, tmp, _PAGE_HUGE);
++	il_bnez(p, r, tmp, lid);
++#endif
++}
++
++static __init void build_huge_update_entries(u32 **p, struct label **l,
++		unsigned int tmp, unsigned int pmd)
++{
++	l_tlb_huge_update(l, *p);
++
++	/*
++	 * A huge PTE describes an area the size of the
++	 * configured huge page size. This is twice the
++	 * of the large TLB entry size we intend to use.
++	 * A TLB entry half the size of the configured
++	 * huge page size is configured into entrylo0
++	 * and entrylo1 to cover the contiguous huge PTE 
++	 * address space.
++	 */
++	i_LW(p, tmp, 0, pmd);
++	build_convert_pte_to_entrylo(p, tmp);
++	i_mtc0(p, tmp, C0_ENTRYLO0); /* load it */
++	if (HPAGE_SIZE>>7 < 0x10000)
++		i_ADDIU(p, tmp, tmp, HPAGE_SIZE >> 7); /* convert to entrylo1 */
++	else
++	{
++		i_nor(p, tmp, tmp, 0);
++		i_dins(p, tmp, 0, HPAGE_SHIFT-7, 1);
++		i_nor(p, tmp, tmp, 0);
++	}
++	i_mtc0(p, tmp, C0_ENTRYLO1); /* load it */
++}
++
++#endif
++
+ static void __init build_r4000_tlb_refill_handler(void)
+ {
+ 	u32 *p = tlb_handler;
+@@ -1259,12 +1564,24 @@ static void __init build_r4000_tlb_refil
+ 	build_get_pgde32(&p, K0, K1); /* get pgd in K1 */
+ #endif
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	build_is_huge_pte(&p, &r, K0, K1, label_tlb_huge_update);
++#endif
++
+ 	build_get_ptep(&p, K0, K1);
+ 	build_update_entries(&p, K0, K1);
+ 	build_tlb_write_entry(&p, &l, &r, tlb_random);
+ 	l_leave(&l, p);
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++	i_LW(&p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
++#endif
+ 	i_eret(&p); /* return from trap */
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	build_huge_update_entries(&p, &l, K0, K1);
++	build_huge_tlb_write_entry(&p, &l, &r, K0, tlb_random);
++#endif
++
+ #ifdef CONFIG_64BIT
+ 	build_get_pgd_vmalloc64(&p, &l, &r, K0, K1);
+ #endif
+@@ -1288,8 +1605,10 @@ static void __init build_r4000_tlb_refil
+ 
+ 	/*
+ 	 * Now fold the handler in the TLB refill handler space.
++	 * Note: We always do this on Octeon since IO addresses are at 
++	 * 64bit addresses. CP0_STATUS[ST0_KX] is always set.
+ 	 */
+-#ifdef CONFIG_32BIT
++#if defined(CONFIG_32BIT) && !defined(CONFIG_CPU_CAVIUM_OCTEON)
+ 	f = final_handler;
+ 	/* Simplest case, just copy the handler. */
+ 	copy_handler(relocs, labels, tlb_handler, p, f);
+@@ -1332,8 +1651,14 @@ static void __init build_r4000_tlb_refil
+ #endif /* CONFIG_64BIT */
+ 
+ 	resolve_relocs(relocs, labels);
++#ifdef CONFIG_CPU_CAVIUM_OCTEON	
++	if (smp_processor_id() == 0)
++		pr_info("Synthesized TLB refill handler (%u instructions).\n",
++			final_len);
++#else
+ 	pr_info("Synthesized TLB refill handler (%u instructions).\n",
+ 		final_len);
++#endif
+ 
+ 	f = final_handler;
+ #ifdef CONFIG_64BIT
+@@ -1457,10 +1782,18 @@ static void __init
+ build_pte_present(u32 **p, struct label **l, struct reloc **r,
+ 		  unsigned int pte, unsigned int ptr, enum label_id lid)
+ {
++#if defined(_PAGE_NO_READ) || defined(_PAGE_NO_EXEC)
++	/* FIXME: We need to check if the read or execute failed because of
++		an inhibit bit or the valid bit being off. Right now we assume
++		it was because of the valid bit, so might do the wrong thing */
++	il_bbit0(p, r, pte, __ilog2(_PAGE_PRESENT), lid);
++	i_nop(p);
++#else
+ 	i_andi(p, pte, pte, _PAGE_PRESENT | _PAGE_READ);
+ 	i_xori(p, pte, pte, _PAGE_PRESENT | _PAGE_READ);
+ 	il_bnez(p, r, pte, lid);
+ 	iPTE_LW(p, l, pte, ptr);
++#endif
+ }
+ 
+ /* Make PTE valid, store result in PTR. */
+@@ -1508,9 +1841,14 @@ static void __init
+ build_pte_modifiable(u32 **p, struct label **l, struct reloc **r,
+ 		     unsigned int pte, unsigned int ptr, enum label_id lid)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	il_bbit0(p, r, pte, __ilog2(_PAGE_WRITE), lid);
++	i_nop(p);
++#else
+ 	i_andi(p, pte, pte, _PAGE_WRITE);
+ 	il_beqz(p, r, pte, lid);
+ 	iPTE_LW(p, l, pte, ptr);
++#endif
+ }
+ 
+ /*
+@@ -1693,6 +2031,15 @@ build_r4000_tlbchange_handler_head(u32 *
+ 	build_get_pgde32(p, pte, ptr); /* get pgd in ptr */
+ #endif
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	/* For huge tlb entries, pmd doesn't contain an address but
++		instead contains the tlb pte. Check the PAGE_HUGE bit
++		and see if we need to jump to huge tlb processing */
++	i_LW(p, pte, 0, ptr);
++	il_bbit1(p, r, pte, __ilog2(_PAGE_HUGE), label_tlb_huge_update);
++	i_nop(p); /* delay slot */
++#endif
++
+ 	i_MFC0(p, pte, C0_BADVADDR);
+ 	i_LW(p, ptr, 0, ptr);
+ 	i_SRL(p, pte, pte, PAGE_SHIFT + PTE_ORDER - PTE_T_LOG2);
+@@ -1716,6 +2063,9 @@ build_r4000_tlbchange_handler_tail(u32 *
+ 	build_update_entries(p, tmp, ptr);
+ 	build_tlb_write_entry(p, l, r, tlb_indexed);
+ 	l_leave(l, *p);
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++	i_LW(p, K0, FAST_ACCESS_THREAD_OFFSET, 0);  /* K0 = thread pointer */
++#endif
+ 	i_eret(p); /* return from trap */
+ 
+ #ifdef CONFIG_64BIT
+@@ -1725,6 +2075,10 @@ build_r4000_tlbchange_handler_tail(u32 *
+ 
+ static void __init build_r4000_tlb_load_handler(void)
+ {
++#ifdef CONFIG_HUGETLB_PAGE
++	const int PTE = K0;
++	const int PTR = K1;
++#endif
+ 	u32 *p = handle_tlbl;
+ 	struct label *l = labels;
+ 	struct reloc *r = relocs;
+@@ -1748,6 +2102,43 @@ static void __init build_r4000_tlb_load_
+ 	build_make_valid(&p, &r, K0, K1);
+ 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	/* This is the entry point when build_r4000_tlbchange_handler_head 
++		spots a huge page */ 
++	l_tlb_huge_update(&l, p);
++	iPTE_LW(&p, &l, PTE, PTR);
++	il_bbit0(&p, &r, PTE, __ilog2(_PAGE_PRESENT), label_nopage_tlbl);
++	build_tlb_probe_entry(&p);
++#if defined(_PAGE_NO_READ) || defined(_PAGE_NO_EXEC)
++	/* FIXME: We need to check if the read or execute failed because of
++		an inhibit bit or the valid bit being off. Right now we assume
++		it was because of the valid bit, so might do the wrong thing */
++	// Nothing for now?
++#else
++	il_bbit0(&p, &r, PTE, __ilog2(_PAGE_READ), label_nopage_tlbl);
++#endif
++	i_ori(&p, PTE, PTE, (_PAGE_ACCESSED | _PAGE_VALID));
++#ifdef CONFIG_SMP
++	i_SC(&p, PTE, 0, PTR);
++	il_beqz(&p, &r, PTE, label_tlb_huge_update);
++	i_LW(&p, PTE, 0, PTR); /* Needed because SC killed our PTE */
++#else
++	i_SW(&p, PTE, 0, PTR);
++#endif
++	build_convert_pte_to_entrylo(&p, PTE);
++	i_mtc0(&p, PTE, C0_ENTRYLO0); /* load it */
++	if (HPAGE_SIZE>>7 < 0x10000)
++		i_addiu(&p, PTE, PTE, HPAGE_SIZE>>7); /* convert to entrylo1 */
++	else
++	{
++		i_nor(&p, PTE, PTE, 0);
++		i_dins(&p, PTE, 0, HPAGE_SHIFT-7, 1);
++		i_nor(&p, PTE, PTE, 0);
++	}
++	i_mtc0(&p, PTE, C0_ENTRYLO1); /* load it */
++	build_huge_tlb_write_entry(&p, &l, &r, PTE, tlb_indexed);
++#endif
++
+ 	l_nopage_tlbl(&l, p);
+ 	i_j(&p, (unsigned long)tlb_do_page_fault_0 & 0x0fffffff);
+ 	i_nop(&p);
+@@ -1768,6 +2159,10 @@ static void __init build_r4000_tlb_load_
+ 
+ static void __init build_r4000_tlb_store_handler(void)
+ {
++#ifdef CONFIG_HUGETLB_PAGE
++	const int PTE = K0;
++	const int PTR = K1;
++#endif
+ 	u32 *p = handle_tlbs;
+ 	struct label *l = labels;
+ 	struct reloc *r = relocs;
+@@ -1782,6 +2177,36 @@ static void __init build_r4000_tlb_store
+ 	build_make_write(&p, &r, K0, K1);
+ 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	/* This is the entry point when build_r4000_tlbchange_handler_head 
++		spots a huge page */ 
++	l_tlb_huge_update(&l, p);
++	iPTE_LW(&p, &l, PTE, PTR);
++	il_bbit0(&p, &r, PTE, __ilog2(_PAGE_PRESENT), label_nopage_tlbs);
++	build_tlb_probe_entry(&p);
++	il_bbit0(&p, &r, PTE, __ilog2(_PAGE_WRITE), label_nopage_tlbs);
++	i_ori(&p, PTE, PTE, (_PAGE_ACCESSED | _PAGE_MODIFIED | _PAGE_VALID | _PAGE_DIRTY));
++#ifdef CONFIG_SMP
++	i_SC(&p, PTE, 0, PTR);
++	il_beqz(&p, &r, PTE, label_tlb_huge_update);
++	i_LW(&p, PTE, 0, PTR); /* Needed because SC killed our PTE */
++#else
++	i_SW(&p, PTE, 0, PTR);
++#endif
++	build_convert_pte_to_entrylo(&p, PTE);
++	i_mtc0(&p, PTE, C0_ENTRYLO0); /* load it */
++	if (HPAGE_SIZE>>7 < 0x10000)
++		i_addiu(&p, PTE, PTE, HPAGE_SIZE>>7); /* convert to entrylo1 */
++	else
++	{
++		i_nor(&p, PTE, PTE, 0);
++		i_dins(&p, PTE, 0, HPAGE_SHIFT-7, 1);
++		i_nor(&p, PTE, PTE, 0);
++	}
++	i_mtc0(&p, PTE, C0_ENTRYLO1); /* load it */
++	build_huge_tlb_write_entry(&p, &l, &r, PTE, tlb_indexed);
++#endif
++
+ 	l_nopage_tlbs(&l, p);
+ 	i_j(&p, (unsigned long)tlb_do_page_fault_1 & 0x0fffffff);
+ 	i_nop(&p);
+@@ -1802,6 +2227,10 @@ static void __init build_r4000_tlb_store
+ 
+ static void __init build_r4000_tlb_modify_handler(void)
+ {
++#ifdef CONFIG_HUGETLB_PAGE
++	const int PTE = K0;
++	const int PTR = K1;
++#endif
+ 	u32 *p = handle_tlbm;
+ 	struct label *l = labels;
+ 	struct reloc *r = relocs;
+@@ -1817,6 +2246,35 @@ static void __init build_r4000_tlb_modif
+ 	build_make_write(&p, &r, K0, K1);
+ 	build_r4000_tlbchange_handler_tail(&p, &l, &r, K0, K1);
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++	/* This is the entry point when build_r4000_tlbchange_handler_head 
++		spots a huge page */ 
++	l_tlb_huge_update(&l, p);
++	iPTE_LW(&p, &l, PTE, PTR);
++	il_bbit0(&p, &r, PTE, __ilog2(_PAGE_WRITE), label_nopage_tlbm);
++	build_tlb_probe_entry(&p);
++	i_ori(&p, PTE, PTE, (_PAGE_ACCESSED | _PAGE_MODIFIED | _PAGE_VALID | _PAGE_DIRTY));
++#ifdef CONFIG_SMP
++	i_SC(&p, PTE, 0, PTR);
++	il_beqz(&p, &r, PTE, label_tlb_huge_update);
++	i_LW(&p, PTE, 0, PTR); /* Needed because SC killed our PTE */
++#else
++	i_SW(&p, PTE, 0, PTR);
++#endif
++	build_convert_pte_to_entrylo(&p, PTE);
++	i_mtc0(&p, PTE, C0_ENTRYLO0); /* load it */
++	if (HPAGE_SIZE>>7 < 0x10000)
++		i_addiu(&p, PTE, PTE, HPAGE_SIZE>>7); /* convert to entrylo1 */
++	else
++	{
++		i_nor(&p, PTE, PTE, 0);
++		i_dins(&p, PTE, 0, HPAGE_SHIFT-7, 1);
++		i_nor(&p, PTE, PTE, 0);
++	}
++	i_mtc0(&p, PTE, C0_ENTRYLO1); /* load it */
++	build_huge_tlb_write_entry(&p, &l, &r, PTE, tlb_indexed);
++#endif
++
+ 	l_nopage_tlbm(&l, p);
+ 	i_j(&p, (unsigned long)tlb_do_page_fault_1 & 0x0fffffff);
+ 	i_nop(&p);
+--- a/arch/mips/mm/tlb-r4k.c
++++ b/arch/mips/mm/tlb-r4k.c
+@@ -19,6 +19,9 @@
+ #include <asm/system.h>
+ 
+ extern void build_tlb_refill_handler(void);
++#ifdef CONFIG_HUGETLB_PAGE
++extern int pmd_huge(pmd_t pmd);
++#endif
+ 
+ /*
+  * Make sure all entries differ.  If they're not different
+@@ -258,6 +261,9 @@ void __update_tlb(struct vm_area_struct
+ 	pmd_t *pmdp;
+ 	pte_t *ptep;
+ 	int idx, pid;
++#ifdef CONFIG_HUGETLB_PAGE
++	int huge;
++#endif
+ 
+ 	/*
+ 	 * Handle debugger faulting in for debugee.
+@@ -277,6 +283,14 @@ void __update_tlb(struct vm_area_struct
+ 	pudp = pud_offset(pgdp, address);
+ 	pmdp = pmd_offset(pudp, address);
+ 	idx = read_c0_index();
++
++#ifdef CONFIG_HUGETLB_PAGE
++	/* this could be a huge page  */
++	if ((huge = pmd_huge(*pmdp))) {
++		write_c0_pagemask(PM_HUGE_MASK);
++		ptep = (pte_t*)pmdp;
++	} else
++#endif
+ 	ptep = pte_offset_map(pmdp, address);
+ 
+ #if defined(CONFIG_64BIT_PHYS_ADDR) && defined(CONFIG_CPU_MIPS32_R1)
+@@ -284,14 +298,21 @@ void __update_tlb(struct vm_area_struct
+ 	ptep++;
+ 	write_c0_entrylo1(ptep->pte_high);
+ #else
+-	write_c0_entrylo0(pte_val(*ptep++) >> 6);
+-	write_c0_entrylo1(pte_val(*ptep) >> 6);
++	write_c0_entrylo0(pte_to_entrylo(pte_val(*ptep++)));
++	write_c0_entrylo1(pte_to_entrylo(pte_val(*ptep)));
+ #endif
+ 	mtc0_tlbw_hazard();
++
+ 	if (idx < 0)
+ 		tlb_write_random();
+ 	else
+ 		tlb_write_indexed();
++
++#ifdef CONFIG_HUGETLB_PAGE
++	if (huge)
++		write_c0_pagemask(PM_DEFAULT_MASK);
++#endif
++
+ 	tlbw_use_hazard();
+ 	EXIT_CRITICAL(flags);
+ }
+@@ -318,8 +339,8 @@ static void r4k_update_mmu_cache_hwbug(s
+ 	pmdp = pmd_offset(pgdp, address);
+ 	idx = read_c0_index();
+ 	ptep = pte_offset_map(pmdp, address);
+-	write_c0_entrylo0(pte_val(*ptep++) >> 6);
+-	write_c0_entrylo1(pte_val(*ptep) >> 6);
++	write_c0_entrylo0(pte_to_entrylo(pte_val(*ptep++)));
++	write_c0_entrylo1(pte_to_entrylo(pte_val(*ptep)));
+ 	mtc0_tlbw_hazard();
+ 	if (idx < 0)
+ 		tlb_write_random();
+@@ -457,7 +478,13 @@ void __init tlb_init(void)
+ 	probe_tlb(config);
+ 	write_c0_pagemask(PM_DEFAULT_MASK);
+ 	write_c0_wired(0);
++#ifndef CONFIG_CPU_CAVIUM_OCTEON	
+ 	write_c0_framemask(0);
++#endif
++#ifdef CONFIG_USE_RI_XI_PAGE_BITS
++	/* Enable the no read, no exec bits, and enable large virtual address */
++	write_c0_pagegrain(7<<29);
++#endif
+ 	temp_tlb_entry = current_cpu_data.tlbsize - 1;
+ 
+         /* From this point on the ARC firmware is dead.  */
+--- a/include/asm-mips/addrspace.h
++++ b/include/asm-mips/addrspace.h
+@@ -136,7 +136,8 @@
+     || defined (CONFIG_CPU_RM9000)					\
+     || defined (CONFIG_CPU_NEVADA)					\
+     || defined (CONFIG_CPU_TX49XX)					\
+-    || defined (CONFIG_CPU_MIPS64)
++    || defined (CONFIG_CPU_MIPS64)					\
++    || defined (CONFIG_CPU_CAVIUM_OCTEON)
+ #define TO_PHYS_MASK	_CONST64_(0x0000000fffffffff)	/* 2^^36 - 1 */
+ #endif
+ 
+--- a/include/asm-mips/asmmacro.h
++++ b/include/asm-mips/asmmacro.h
+@@ -35,6 +35,16 @@
+ 	mtc0	\reg, CP0_TCSTATUS
+ 	_ehb
+ 	.endm
++#elif defined(CONFIG_CPU_CAVIUM_OCTEON)
++	.macro	local_irq_enable reg=t0
++	ei
++	irq_enable_hazard
++	.endm
++
++	.macro	local_irq_disable reg=t0
++	di
++	irq_disable_hazard
++	.endm
+ #else
+ 	.macro	local_irq_enable reg=t0
+ 	mfc0	\reg, CP0_STATUS
+--- a/include/asm-mips/atomic.h
++++ b/include/asm-mips/atomic.h
+@@ -49,6 +49,17 @@ typedef struct { volatile int counter; }
+  */
+ static __inline__ void atomic_add(int i, atomic_t * v)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	if (cpu_has_saa) {
++		__asm__ __volatile__(
++		".set	push\n"
++		".set	arch=octeon\n"
++		"saa    %1, (%2)\n"
++		".set	pop\n"
++		: "+m" (v->counter)
++		: "r" (i), "r" (v));
++	} else
++#endif
+ 	if (cpu_has_llsc && R10000_LLSC_WAR) {
+ 		unsigned long temp;
+ 
+@@ -94,6 +105,17 @@ static __inline__ void atomic_add(int i,
+  */
+ static __inline__ void atomic_sub(int i, atomic_t * v)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	if (cpu_has_saa) {
++		__asm__ __volatile__(
++		".set	push\n"
++		".set	arch=octeon\n"
++		"saa    %1, (%2)\n"
++		".set	pop\n"
++		: "+m" (v->counter)
++		: "r" (-i), "r" (v));
++	} else
++#endif
+ 	if (cpu_has_llsc && R10000_LLSC_WAR) {
+ 		unsigned long temp;
+ 
+@@ -157,6 +179,9 @@ static __inline__ int atomic_add_return(
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	ll	%1, %2		# atomic_add_return	\n"
+ 		"	addu	%0, %1, %3				\n"
+@@ -209,6 +234,9 @@ static __inline__ int atomic_sub_return(
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	ll	%1, %2		# atomic_sub_return	\n"
+ 		"	subu	%0, %1, %3				\n"
+@@ -273,6 +301,9 @@ static __inline__ int atomic_sub_if_posi
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	ll	%1, %2		# atomic_sub_if_positive\n"
+ 		"	subu	%0, %1, %3				\n"
+@@ -424,6 +455,17 @@ typedef struct { volatile long counter;
+  */
+ static __inline__ void atomic64_add(long i, atomic64_t * v)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	if (cpu_has_saa) {
++		__asm__ __volatile__(
++		".set	push\n"
++		".set	arch=octeon\n"
++		"saad   %1, (%2)\n"
++		".set	pop\n"
++		: "+m" (v->counter)
++		: "r" (i), "r" (v));
++	} else
++#endif
+ 	if (cpu_has_llsc && R10000_LLSC_WAR) {
+ 		unsigned long temp;
+ 
+@@ -469,6 +511,17 @@ static __inline__ void atomic64_add(long
+  */
+ static __inline__ void atomic64_sub(long i, atomic64_t * v)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	if (cpu_has_saa) {
++		__asm__ __volatile__(
++		".set	push\n"
++		".set	arch=octeon\n"
++		"saad    %1, (%2)\n"
++		".set	pop\n"
++		: "+m" (v->counter)
++		: "r" (-i), "r" (v));
++	} else
++#endif
+ 	if (cpu_has_llsc && R10000_LLSC_WAR) {
+ 		unsigned long temp;
+ 
+@@ -532,6 +585,9 @@ static __inline__ long atomic64_add_retu
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	lld	%1, %2		# atomic64_add_return	\n"
+ 		"	addu	%0, %1, %3				\n"
+@@ -584,6 +640,9 @@ static __inline__ long atomic64_sub_retu
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	lld	%1, %2		# atomic64_sub_return	\n"
+ 		"	subu	%0, %1, %3				\n"
+@@ -648,6 +707,9 @@ static __inline__ long atomic64_sub_if_p
+ 		unsigned long temp;
+ 
+ 		__asm__ __volatile__(
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	lld	%1, %2		# atomic64_sub_if_positive\n"
+ 		"	dsubu	%0, %1, %3				\n"
+--- a/include/asm-mips/barrier.h
++++ b/include/asm-mips/barrier.h
+@@ -78,6 +78,15 @@
+ #define __sync()	do { } while(0)
+ #endif
+ 
++
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define __syncw() 	__asm__ __volatile__(OCTEON_SYNCW_STR ::: "memory")
++#define __fast_iob()	do { } while(0)
++#define fast_wmb()	__syncw()
++#define fast_rmb()	do { } while(0)
++#define fast_mb()	__syncw()
++#define fast_iob()	do { } while(0)
++#else
+ #define __fast_iob()				\
+ 	__asm__ __volatile__(			\
+ 		".set	push\n\t"		\
+@@ -97,6 +106,7 @@
+ 		__sync();			\
+ 		__fast_iob();			\
+ 	} while (0)
++#endif
+ 
+ #ifdef CONFIG_CPU_HAS_WB
+ 
+@@ -117,13 +127,21 @@
+ #endif /* !CONFIG_CPU_HAS_WB */
+ 
+ #if defined(CONFIG_WEAK_ORDERING) && defined(CONFIG_SMP)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define __WEAK_ORDERING_MB	OCTEON_SYNCW_STR
++#else
+ #define __WEAK_ORDERING_MB	"       sync	\n"
++#endif
+ #else
+ #define __WEAK_ORDERING_MB	"		\n"
+ #endif
+ 
+ #define smp_mb()	__asm__ __volatile__(__WEAK_ORDERING_MB : : :"memory")
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define smp_rmb()	barrier()
++#else
+ #define smp_rmb()	__asm__ __volatile__(__WEAK_ORDERING_MB : : :"memory")
++#endif
+ #define smp_wmb()	__asm__ __volatile__(__WEAK_ORDERING_MB : : :"memory")
+ 
+ #define set_mb(var, value) \
+--- a/include/asm-mips/bitops.h
++++ b/include/asm-mips/bitops.h
+@@ -262,6 +262,9 @@ static inline int test_and_set_bit(unsig
+ 		__asm__ __volatile__(
+ 		"	.set	push					\n"
+ 		"	.set	noreorder				\n"
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	" __LL "%0, %1		# test_and_set_bit	\n"
+ 		"	or	%2, %0, %3				\n"
+@@ -349,6 +352,9 @@ static inline int test_and_clear_bit(uns
+ 		__asm__ __volatile__(
+ 		"	.set	push					\n"
+ 		"	.set	noreorder				\n"
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	" __LL	"%0, %1		# test_and_clear_bit	\n"
+ 		"	or	%2, %0, %3				\n"
+@@ -418,6 +424,9 @@ static inline int test_and_change_bit(un
+ 		__asm__ __volatile__(
+ 		"	.set	push					\n"
+ 		"	.set	noreorder				\n"
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		OCTEON_SYNCW_STR
++#endif
+ 		"	.set	mips3					\n"
+ 		"1:	" __LL	"%0, %1		# test_and_change_bit	\n"
+ 		"	xor	%2, %0, %3				\n"
+@@ -485,7 +494,7 @@ static inline int __ilog2(unsigned long
+ 	return 63 - lz;
+ }
+ 
+-#if defined(CONFIG_CPU_MIPS32) || defined(CONFIG_CPU_MIPS64)
++#if defined(CONFIG_CPU_MIPS32) || defined(CONFIG_CPU_MIPS64) || defined(CONFIG_CPU_CAVIUM_OCTEON)
+ 
+ /*
+  * __ffs - find first bit in word.
+@@ -513,7 +522,7 @@ static inline int fls(int word)
+ 	return 32 - word;
+ }
+ 
+-#if defined(CONFIG_64BIT) && defined(CONFIG_CPU_MIPS64)
++#if defined(CONFIG_64BIT) && (defined(CONFIG_CPU_MIPS64) || defined(CONFIG_CPU_CAVIUM_OCTEON))
+ static inline int fls64(__u64 word)
+ {
+ 	__asm__ ("dclz %0, %1" : "=r" (word) : "r" (word));
+--- a/include/asm-mips/bootinfo.h
++++ b/include/asm-mips/bootinfo.h
+@@ -208,6 +208,12 @@
+ #define  MACH_TITAN_EXCITE	2	/* Basler eXcite		*/
+ 
+ /*
++ * Valid machtype for group CAVIUM
++ */
++#define MACH_GROUP_CAVIUM      23	/* Cavium Octeon */
++#define  MACH_CAVIUM_OCTEON	1	/* Cavium Octeon */
++
++/*
+  * Valid machtype for group NEC EMMA2RH
+  */
+ #define MACH_GROUP_NEC_EMMA2RH 25	/* NEC EMMA2RH (was 23)		*/
+--- a/include/asm-mips/cpu-features.h
++++ b/include/asm-mips/cpu-features.h
+@@ -102,6 +102,10 @@
+ #define cpu_has_pindexed_dcache	(cpu_data[0].dcache.flags & MIPS_CACHE_PINDEX)
+ #endif
+ 
++#ifndef cpu_has_saa
++#define cpu_has_saa             0
++#endif
++
+ /*
+  * I-Cache snoops remote store.  This only matters on SMP.  Some multiprocessors
+  * such as the R10000 have I-Caches that snoop local stores; the embedded ones
+--- a/include/asm-mips/cpu.h
++++ b/include/asm-mips/cpu.h
+@@ -33,6 +33,7 @@
+ #define PRID_COMP_TOSHIBA	0x070000
+ #define PRID_COMP_LSI		0x080000
+ #define PRID_COMP_LEXRA		0x0b0000
++#define PRID_COMP_CAVIUM	0x0d0000
+ 
+ 
+ /*
+@@ -104,6 +105,19 @@
+ #define PRID_IMP_SR71000        0x0400
+ 
+ /*
++ * These are the PRID's for when 23:16 == PRID_COMP_CAVIUM
++ */
++
++#define PRID_IMP_CAVIUM_CN38XX 0x0000
++#define PRID_IMP_CAVIUM_CN31XX 0x0100
++#define PRID_IMP_CAVIUM_CN30XX 0x0200
++#define PRID_IMP_CAVIUM_CN58XX 0x0300
++#define PRID_IMP_CAVIUM_CN56XX 0x0400
++#define PRID_IMP_CAVIUM_CN50XX 0x0600
++#define PRID_IMP_CAVIUM_CN52XX 0x0700
++#define PRID_IMP_CAVIUM_CN51XX 0x0800
++
++/*
+  * Definitions for 7:0 on legacy processors
+  */
+ 
+@@ -211,7 +225,8 @@
+ #define CPU_SB1A		62
+ #define CPU_74K			63
+ #define CPU_R14000		64
+-#define CPU_LAST		64
++#define CPU_CAVIUM_OCTEON	65
++#define CPU_LAST		65
+ 
+ /*
+  * ISA Level encodings
+--- a/include/asm-mips/delay.h
++++ b/include/asm-mips/delay.h
+@@ -13,6 +13,7 @@
+ #include <linux/param.h>
+ #include <linux/smp.h>
+ #include <asm/compiler.h>
++#include <asm/time.h>
+ 
+ static inline void __delay(unsigned long loops)
+ {
+@@ -36,6 +37,21 @@ static inline void __delay(unsigned long
+ 		: "0" (loops));
+ }
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON) && !defined(_ABIO32)
++/* Implementation of udelay, which unlike the default will actually delay
++    the correct amount of time. Among the other problems with the default
++    spin loop implementation, it overflows at 1ms */
++static inline void udelay(unsigned long usecs)
++{
++    cycles_t cycles = get_cycles();
++    cycles_t end_cycles = cycles + usecs * mips_hpt_frequency/1000000;
++    do
++    {
++        cycles = get_cycles();
++    } while (cycles<end_cycles);
++}
++
++#else
+ 
+ /*
+  * Division by multiplication: you don't have to worry about
+@@ -83,6 +99,8 @@ static inline void __udelay(unsigned lon
+ 
+ #define udelay(usecs) __udelay((usecs),__udelay_val)
+ 
++#endif /* CONFIG_CPU_CAVIUM_OCTEON */
++
+ /* make sure "usecs *= ..." in udelay do not overflow. */
+ #if HZ >= 1000
+ #define MAX_UDELAY_MS	1
+--- a/include/asm-mips/dma.h
++++ b/include/asm-mips/dma.h
+@@ -88,6 +88,13 @@
+ /* Horrible hack to have a correct DMA window on IP22 */
+ #include <asm/sgi/mc.h>
+ #define MAX_DMA_ADDRESS		(PAGE_OFFSET + SGIMC_SEG0_BADDR + 0x01000000)
++#elif defined(CONFIG_CPU_CAVIUM_OCTEON)
++/* Octeon can support DMA to any memory installed */
++#ifdef CONFIG_64BIT
++#define MAX_DMA_ADDRESS		(PAGE_OFFSET + (1ull<<32))
++#else
++#define MAX_DMA_ADDRESS		(PAGE_OFFSET + (1ul<<30))
++#endif
+ #else
+ #define MAX_DMA_ADDRESS		(PAGE_OFFSET + 0x01000000)
+ #endif
+--- a/include/asm-mips/fpu_emulator.h
++++ b/include/asm-mips/fpu_emulator.h
+@@ -23,6 +23,17 @@
+ #ifndef _ASM_FPU_EMULATOR_H
+ #define _ASM_FPU_EMULATOR_H
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++/* On SMP systems the FPU emulator statistics cause huge amounts of cross CPU
++    memory traffic that isn't really needed. Nobody actually has any way of
++    reading these statistics, so we disable them on Octeon. Other processors
++    might want to do the same. */
++#undef MIPS_FPU_EMULATOR_STATS_ENABLED
++#else
++#define MIPS_FPU_EMULATOR_STATS_ENABLED 1
++#endif
++
++#ifdef MIPS_FPU_EMULATOR_STATS_ENABLED
+ struct mips_fpu_emulator_stats {
+ 	unsigned int emulated;
+ 	unsigned int loads;
+@@ -33,5 +44,9 @@ struct mips_fpu_emulator_stats {
+ };
+ 
+ extern struct mips_fpu_emulator_stats fpuemustats;
++#define FPUEMUSTATS_INC(field) fpuemustats.field++
++#else
++#define FPUEMUSTATS_INC(field) do {} while (0)
++#endif
+ 
+ #endif /* _ASM_FPU_EMULATOR_H */
+--- a/include/asm-mips/hazards.h
++++ b/include/asm-mips/hazards.h
+@@ -36,7 +36,7 @@ ASMMACRO(_ehb,
+ /*
+  * TLB hazards
+  */
+-#if defined(CONFIG_CPU_MIPSR2)
++#if defined(CONFIG_CPU_MIPSR2) && !defined(CONFIG_CPU_CAVIUM_OCTEON)
+ 
+ /*
+  * MIPSR2 defines ehb for hazard avoidance
+@@ -81,7 +81,7 @@ do {									\
+ 	: "=r" (tmp));							\
+ } while (0)
+ 
+-#elif defined(CONFIG_CPU_R10000)
++#elif defined(CONFIG_CPU_R10000) || defined(CONFIG_CPU_CAVIUM_OCTEON)
+ 
+ /*
+  * R10000 rocks - all hazards handled in hardware, so this becomes a nobrainer.
+--- a/include/asm-mips/io.h
++++ b/include/asm-mips/io.h
+@@ -300,7 +300,7 @@ static inline void pfx##write##bwlq(type
+ {									\
+ 	volatile type *__mem;						\
+ 	type __val;							\
+-									\
++	wmb(); /* Workaround for Octeon Errata Core-301 */		\
+ 	__mem = (void *)__swizzle_addr_##bwlq((unsigned long)(mem));	\
+ 									\
+ 	__val = pfx##ioswab##bwlq(__mem, val);				\
+@@ -367,7 +367,7 @@ static inline void pfx##out##bwlq##p(typ
+ {									\
+ 	volatile type *__addr;						\
+ 	type __val;							\
+-									\
++	wmb(); /* Workaround for Octeon Errata Core-301 */		\
+ 	__addr = (void *)__swizzle_addr_##bwlq(mips_io_port_base + port); \
+ 									\
+ 	__val = pfx##ioswab##bwlq(__addr, val);				\
+@@ -502,8 +502,12 @@ BUILDSTRING(q, u64)
+ #endif
+ 
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define mmiowb() wmb()
++#else
+ /* Depends on MIPS II instruction set */
+ #define mmiowb() asm volatile ("sync" ::: "memory")
++#endif
+ 
+ static inline void memset_io(volatile void __iomem *addr, unsigned char val, int count)
+ {
+--- a/include/asm-mips/mach-generic/dma-coherence.h
++++ b/include/asm-mips/mach-generic/dma-coherence.h
+@@ -40,6 +40,13 @@ static inline int plat_device_is_coheren
+ #ifdef CONFIG_DMA_NONCOHERENT
+ 	return 0;
+ #endif
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	/* The Cavium Octeon has fully coherent DMA but doesn't use
++		CONFIG_DMA_COHERENT so it can replace the normally DMA
++		mapping functions with ones supporting 64bit mappings
++		specific to Octeon */
++	return 1;
++#endif
+ }
+ 
+ #endif /* __ASM_MACH_GENERIC_DMA_COHERENCE_H */
+--- a/include/asm-mips/mach-generic/mc146818rtc.h
++++ b/include/asm-mips/mach-generic/mc146818rtc.h
+@@ -13,7 +13,9 @@
+ #include <asm/io.h>
+ 
+ #define RTC_PORT(x)	(0x70 + (x))
++#ifndef RTC_IRQ
+ #define RTC_IRQ		8
++#endif
+ 
+ static inline unsigned char CMOS_READ(unsigned long addr)
+ {
+--- a/include/asm-mips/mipsregs.h
++++ b/include/asm-mips/mipsregs.h
+@@ -183,7 +183,9 @@
+ #else
+ 
+ #define PM_4K		0x00000000
++#define PM_8K		0x00002000  /* Used for Cavium Octeon */
+ #define PM_16K		0x00006000
++#define PM_32K		0x0000e000  /* Used for Cavium Octeon */
+ #define PM_64K		0x0001e000
+ #define PM_256K		0x0007e000
+ #define PM_1M		0x001fe000
+@@ -199,14 +201,36 @@
+  */
+ #ifdef CONFIG_PAGE_SIZE_4KB
+ #define PM_DEFAULT_MASK	PM_4K
++#elif defined(CONFIG_PAGE_SIZE_8KB)
++#define PM_DEFAULT_MASK	PM_8K
+ #elif defined(CONFIG_PAGE_SIZE_16KB)
+ #define PM_DEFAULT_MASK	PM_16K
++#elif defined(CONFIG_PAGE_SIZE_32KB)
++#define PM_DEFAULT_MASK	PM_32K
+ #elif defined(CONFIG_PAGE_SIZE_64KB)
+ #define PM_DEFAULT_MASK	PM_64K
+ #else
+ #error Bad page size configuration!
+ #endif
+ 
++/*
++ * Default huge tlb size for a given kernel configuration
++ */
++#ifdef CONFIG_HUGETLB_PAGE
++#ifdef CONFIG_PAGE_SIZE_4KB
++#define PM_HUGE_MASK	PM_1M
++#elif defined(CONFIG_PAGE_SIZE_8KB)
++#define PM_HUGE_MASK	PM_4M
++#elif defined(CONFIG_PAGE_SIZE_16KB)
++#define PM_HUGE_MASK	PM_16M
++#elif defined(CONFIG_PAGE_SIZE_32KB)
++#define PM_HUGE_MASK	PM_64M
++#elif defined(CONFIG_PAGE_SIZE_64KB)
++#define PM_HUGE_MASK	PM_256M
++#else
++#error Bad page size configuration (only 4KB, 8KB, 16KB, 32KB, and 64KB supported for hugetlbfs)!
++#endif
++#endif
+ 
+ /*
+  * Values used for computation of new tlb entries
+@@ -548,6 +572,16 @@
+ #define MIPS_FPIR_L		(_ULCAST_(1) << 21)
+ #define MIPS_FPIR_F64		(_ULCAST_(1) << 22)
+ 
++/*
++ * These defines are used on Octeon to implement fast access to the thread pointer
++ * from userspace. Octeon uses a 64bit location in CVMSEG to store the thread pointer
++ * for quick access. 
++ */
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++#define FAST_ACCESS_THREAD_OFFSET       CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE*128-8-32768
++#define FAST_ACCESS_THREAD_REGISTER     *(unsigned long *)(FAST_ACCESS_THREAD_OFFSET)
++#endif
++
+ #ifndef __ASSEMBLY__
+ 
+ /*
+@@ -779,6 +813,9 @@ do {									\
+ #define read_c0_pagemask()	__read_32bit_c0_register($5, 0)
+ #define write_c0_pagemask(val)	__write_32bit_c0_register($5, 0, val)
+ 
++#define read_c0_pagegrain()	__read_32bit_c0_register($5, 1)
++#define write_c0_pagegrain(val)	__write_32bit_c0_register($5, 1, val)
++
+ #define read_c0_wired()		__read_32bit_c0_register($6, 0)
+ #define write_c0_wired(val)	__write_32bit_c0_register($6, 0, val)
+ 
+@@ -800,7 +837,14 @@ do {									\
+ #define write_c0_count3(val)	__write_32bit_c0_register($9, 7, val)
+ 
+ #define read_c0_entryhi()	__read_ulong_c0_register($10, 0)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++/* The Cavium Octeon simulator validates that unused hardware bits are zero. 
++    The kernel by default allows the ASID to overflow the actual hardware 
++    space. Most mips hardware doesn't care, but the simulator does. */
++#define write_c0_entryhi(val)	__write_ulong_c0_register($10, 0, (val) & ~0x1f00ul)
++#else
+ #define write_c0_entryhi(val)	__write_ulong_c0_register($10, 0, val)
++#endif
+ 
+ #define read_c0_compare()	__read_32bit_c0_register($11, 0)
+ #define write_c0_compare(val)	__write_32bit_c0_register($11, 0, val)
+@@ -959,7 +1003,12 @@ do {									\
+ #define read_c0_derraddr0()	__read_ulong_c0_register($26, 1)
+ #define write_c0_derraddr0(val)	__write_ulong_c0_register($26, 1, val)
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define read_c0_cacheerr()	__read_64bit_c0_register($27, 0)
++#define write_c0_cacheerr(val)	__write_64bit_c0_register($27, 0, val)
++#else
+ #define read_c0_cacheerr()	__read_32bit_c0_register($27, 0)
++#endif
+ 
+ #define read_c0_derraddr1()	__read_ulong_c0_register($27, 1)
+ #define write_c0_derraddr1(val)	__write_ulong_c0_register($27, 1, val)
+--- a/include/asm-mips/module.h
++++ b/include/asm-mips/module.h
+@@ -112,6 +112,8 @@ search_module_dbetables(unsigned long ad
+ #define MODULE_PROC_FAMILY "RM9000 "
+ #elif defined CONFIG_CPU_SB1
+ #define MODULE_PROC_FAMILY "SB1 "
++#elif defined CONFIG_CPU_CAVIUM_OCTEON
++#define MODULE_PROC_FAMILY "OCTEON "
+ #else
+ #error MODULE_PROC_FAMILY undefined for your processor configuration
+ #endif
+--- a/include/asm-mips/page.h
++++ b/include/asm-mips/page.h
+@@ -26,12 +26,22 @@
+ #ifdef CONFIG_PAGE_SIZE_16KB
+ #define PAGE_SHIFT	14
+ #endif
++#ifdef CONFIG_PAGE_SIZE_32KB
++#define PAGE_SHIFT	15
++#endif
+ #ifdef CONFIG_PAGE_SIZE_64KB
+ #define PAGE_SHIFT	16
+ #endif
+ #define PAGE_SIZE	(1UL << PAGE_SHIFT)
+ #define PAGE_MASK       (~((1 << PAGE_SHIFT) - 1))
+ 
++#ifdef CONFIG_HUGETLB_PAGE
++#define HPAGE_SHIFT	(PAGE_SHIFT + PAGE_SHIFT - 3)
++#define HPAGE_SIZE	((1UL) << HPAGE_SHIFT)
++#define HPAGE_MASK	(~(HPAGE_SIZE - 1))
++#define HUGETLB_PAGE_ORDER	(HPAGE_SHIFT - PAGE_SHIFT)
++#endif
++
+ #ifndef __ASSEMBLY__
+ 
+ /*
+@@ -149,7 +159,8 @@ typedef struct { unsigned long pgprot; }
+ /*
+  * __pa()/__va() should be used only during mem init.
+  */
+-#if defined(CONFIG_64BIT) && !defined(CONFIG_BUILD_ELF64)
++// FIXME: Why does the 64bit Octeon kernel require this?
++#if defined(CONFIG_64BIT) && (!defined(CONFIG_BUILD_ELF64) || defined(CONFIG_CPU_CAVIUM_OCTEON))
+ #define __pa_page_offset(x)	((unsigned long)(x) < CKSEG0 ? PAGE_OFFSET : CKSEG0)
+ #else
+ #define __pa_page_offset(x)	PAGE_OFFSET
+--- a/include/asm-mips/pgtable-64.h
++++ b/include/asm-mips/pgtable-64.h
+@@ -17,6 +17,7 @@
+ #include <asm/fixmap.h>
+ 
+ #include <asm-generic/pgtable-nopud.h>
++#include <asm/pgtable-bits.h>
+ 
+ /*
+  * Each address space has 2 4K pages as its page directory, giving 1024
+@@ -83,6 +84,12 @@
+ #define PMD_ORDER		0
+ #define PTE_ORDER		0
+ #endif
++#ifdef CONFIG_PAGE_SIZE_32KB
++#define PGD_ORDER		0
++#define PUD_ORDER		aieeee_attempt_to_allocate_pud
++#define PMD_ORDER		0
++#define PTE_ORDER		0
++#endif
+ #ifdef CONFIG_PAGE_SIZE_64KB
+ #define PGD_ORDER		0
+ #define PUD_ORDER		aieeee_attempt_to_allocate_pud
+@@ -129,7 +136,8 @@ extern pmd_t empty_bad_pmd_table[PTRS_PE
+  */
+ static inline int pmd_none(pmd_t pmd)
+ {
+-	return pmd_val(pmd) == (unsigned long) invalid_pte_table;
++	return (pmd_val(pmd) == (unsigned long) invalid_pte_table) ||
++				(!pmd_val(pmd));
+ }
+ 
+ #define pmd_bad(pmd)		(pmd_val(pmd) & ~PAGE_MASK)
+@@ -173,9 +181,15 @@ static inline void pud_clear(pud_t *pudp
+ #define pte_pfn(x)		((unsigned long)((x).pte >> (PAGE_SHIFT + 2)))
+ #define pfn_pte(pfn, prot)	__pte(((pfn) << (PAGE_SHIFT + 2)) | pgprot_val(prot))
+ #else
++#ifdef _PAGE_NO_EXEC
++/* The NO_READ and NO_EXEC added an extra two bits */
++#define pte_pfn(x)		((unsigned long)((x).pte >> (PAGE_SHIFT+2)))
++#define pfn_pte(pfn, prot)	__pte(((pfn) << (PAGE_SHIFT+2)) | pgprot_val(prot))
++#else
+ #define pte_pfn(x)		((unsigned long)((x).pte >> PAGE_SHIFT))
+ #define pfn_pte(pfn, prot)	__pte(((pfn) << PAGE_SHIFT) | pgprot_val(prot))
+ #endif
++#endif
+ 
+ #define __pgd_offset(address)	pgd_index(address)
+ #define __pud_offset(address)	(((address) >> PUD_SHIFT) & (PTRS_PER_PUD-1))
+--- a/include/asm-mips/pgtable-bits.h
++++ b/include/asm-mips/pgtable-bits.h
+@@ -56,7 +56,43 @@
+ #define _CACHE_CACHABLE_NONCOHERENT (3<<3)
+ #define _CACHE_CACHABLE_COW         (3<<3)  /* Au1x                    */
+ 
+-#else
++#elif defined(CONFIG_USE_RI_XI_PAGE_BITS)
++
++/* When using the RI/XI bit support, we have 14 bits of flags below the physical
++	address. The RI/XI bits are places such that a SRL 8 can strip off the software
++	bits, then a ROTR 2 can move the RI/XI into bits [63:62]. This also limits
++	physical address to 56 bits, which is more than we need right now. Octeon
++	CSRs use 48 bits */
++#define _PAGE_PRESENT               (1<<0)  /* implemented in software */
++#define _PAGE_WRITE                 (1<<2)  /* implemented in software */
++#define _PAGE_ACCESSED              (1<<3)  /* implemented in software */
++#define _PAGE_MODIFIED              (1<<4)  /* implemented in software */
++#define _PAGE_FILE                  (1<<4)  /* set:pagecache unset:swap */
++#define _PAGE_HUGE                  (1<<5)  /* huge tlb page */
++#define _PAGE_NO_EXEC               (1<<6)  /* Page cannot be executed */
++#define _PAGE_NO_READ               (1<<7)  /* Page cannot be read */
++#define _PAGE_GLOBAL                (1<<8)
++#define _PAGE_VALID                 (1<<9)
++#define _PAGE_SILENT_READ           (1<<9)  /* synonym                 */
++#define _PAGE_DIRTY                 (1<<10) /* The MIPS dirty bit      */
++#define _PAGE_SILENT_WRITE          (1<<10)
++#define _CACHE_MASK                 (7<<11)
++#ifndef __ASSEMBLY__
++/* pte_to_entrylo converts a page table entry (PTE) into a Mips entrylo0/1 value. This
++	is an inline function instead of a macro since the kenrel code tends to pass
++	expressions with ++ in them */
++static inline uint64_t pte_to_entrylo(unsigned long pte_val)
++{
++	/* C has no way to express that this is a DSRL 8 followed by a ROTR 2.
++		Luckily in the fast path this is done in assembly */
++	return (pte_val>>8)|((pte_val&(_PAGE_NO_EXEC|_PAGE_NO_READ))<<56);
++}
++#endif
++
++#define _CACHE_UNCACHED             (0<<11) /* Memory is always cached on Octeon */
++#define _CACHE_UNCACHED_ACCELERATED (7<<11) /* Write buffer entries are marked special */
++
++#else /* CONFIG_USE_RI_XI_PAGE_BITS */
+ 
+ #define _PAGE_PRESENT               (1<<0)  /* implemented in software */
+ #define _PAGE_READ                  (1<<1)  /* implemented in software */
+@@ -64,6 +100,13 @@
+ #define _PAGE_ACCESSED              (1<<3)  /* implemented in software */
+ #define _PAGE_MODIFIED              (1<<4)  /* implemented in software */
+ #define _PAGE_FILE                  (1<<4)  /* set:pagecache unset:swap */
++#ifndef __ASSEMBLY__
++/* pte_to_entrylo converts a page table entry (PTE) into a Mips entrylo0/1 value */
++static inline uint64_t pte_to_entrylo(unsigned long pte_val)
++{
++	return pte_val>>6;
++}
++#endif
+ 
+ #if defined(CONFIG_CPU_R3000) || defined(CONFIG_CPU_TX39XX)
+ 
+@@ -78,6 +121,7 @@
+ 
+ #else
+ #define _PAGE_R4KBUG                (1<<5)  /* workaround for r4k bug  */
++#define _PAGE_HUGE		    (1<<5)  /* huge tlb page */
+ #define _PAGE_GLOBAL                (1<<6)
+ #define _PAGE_VALID                 (1<<7)
+ #define _PAGE_SILENT_READ           (1<<7)  /* synonym                 */
+@@ -124,7 +168,11 @@
+ #endif
+ #endif /* defined(CONFIG_CPU_MIPS32_R1) && defined(CONFIG_64BIT_PHYS_ADDR) */
+ 
++#ifdef _PAGE_NO_READ
++#define __READABLE	(_PAGE_SILENT_READ | _PAGE_ACCESSED)
++#else
+ #define __READABLE	(_PAGE_READ | _PAGE_SILENT_READ | _PAGE_ACCESSED)
++#endif
+ #define __WRITEABLE	(_PAGE_WRITE | _PAGE_SILENT_WRITE | _PAGE_MODIFIED)
+ 
+ #define _PAGE_CHG_MASK  (PAGE_MASK | _PAGE_ACCESSED | _PAGE_MODIFIED | _CACHE_MASK)
+@@ -135,6 +183,11 @@
+ #define PAGE_CACHABLE_DEFAULT	_CACHE_CACHABLE_NONCOHERENT
+ #elif defined(CONFIG_CPU_RM9000)
+ #define PAGE_CACHABLE_DEFAULT	_CACHE_CWB
++#elif defined(CONFIG_CPU_CAVIUM_OCTEON)
++/* Use cache mode 7 on Octeon. This cache region is marked special and can be
++    write flushed seperately from other memory addresses. This allows us to
++    flush hardware writes without flushing user writes */
++#define PAGE_CACHABLE_DEFAULT	_CACHE_UNCACHED_ACCELERATED
+ #else
+ #define PAGE_CACHABLE_DEFAULT	_CACHE_CACHABLE_COW
+ #endif
+--- a/include/asm-mips/pgtable.h
++++ b/include/asm-mips/pgtable.h
+@@ -21,6 +21,28 @@
+ struct mm_struct;
+ struct vm_area_struct;
+ 
++#ifdef _PAGE_NO_EXEC
++#define PAGE_BASE_FLAGS (_PAGE_PRESENT | PAGE_CACHABLE_DEFAULT)
++#define PAGE_KERNEL __pgprot(PAGE_BASE_FLAGS | __READABLE | __WRITEABLE | _PAGE_GLOBAL)
++#define PAGE_COPY __pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC)
++#define __P000	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC | _PAGE_NO_READ | _PAGE_NO_EXEC)
++#define __P001	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC)
++#define __P010	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC | _PAGE_NO_READ)
++#define __P011	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC)
++#define __P100	__pgprot(PAGE_BASE_FLAGS /* | _PAGE_NO_READ */)
++#define __P101	__pgprot(PAGE_BASE_FLAGS)
++#define __P110	__pgprot(PAGE_BASE_FLAGS /* | _PAGE_NO_READ */)
++#define __P111	__pgprot(PAGE_BASE_FLAGS)
++
++#define __S000	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC | _PAGE_NO_READ)
++#define __S001	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC)
++#define __S010	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC | _PAGE_WRITE | _PAGE_NO_READ)
++#define __S011	__pgprot(PAGE_BASE_FLAGS | _PAGE_NO_EXEC | _PAGE_WRITE)
++#define __S100	__pgprot(PAGE_BASE_FLAGS /* | _PAGE_NO_READ */)
++#define __S101	__pgprot(PAGE_BASE_FLAGS)
++#define __S110	__pgprot(PAGE_BASE_FLAGS | _PAGE_WRITE /* | _PAGE_NO_READ */)
++#define __S111	__pgprot(PAGE_BASE_FLAGS | _PAGE_WRITE)
++#else
+ #define PAGE_NONE	__pgprot(_PAGE_PRESENT | _CACHE_CACHABLE_NONCOHERENT)
+ #define PAGE_SHARED	__pgprot(_PAGE_PRESENT | _PAGE_READ | _PAGE_WRITE | \
+ 			PAGE_CACHABLE_DEFAULT)
+@@ -57,6 +79,7 @@ struct vm_area_struct;
+ #define __S101	PAGE_READONLY
+ #define __S110	PAGE_SHARED
+ #define __S111	PAGE_SHARED
++#endif
+ 
+ /*
+  * ZERO_PAGE is a global shared page that is always zero; used
+@@ -253,11 +276,18 @@ static inline pte_t pte_mkyoung(pte_t pt
+ 	return pte;
+ }
+ #else
++#ifdef _PAGE_NO_READ
++static inline int pte_read(pte_t pte)	{ return !!(pte_val(pte) & _PAGE_NO_READ); }
++#else
+ static inline int pte_read(pte_t pte)	{ return pte_val(pte) & _PAGE_READ; }
++#endif
+ static inline int pte_write(pte_t pte)	{ return pte_val(pte) & _PAGE_WRITE; }
+ static inline int pte_dirty(pte_t pte)	{ return pte_val(pte) & _PAGE_MODIFIED; }
+ static inline int pte_young(pte_t pte)	{ return pte_val(pte) & _PAGE_ACCESSED; }
+ static inline int pte_file(pte_t pte)	{ return pte_val(pte) & _PAGE_FILE; }
++#ifdef CONFIG_HUGETLB_PAGE
++static inline int pte_huge(pte_t pte)	{ return pte_val(pte) & _PAGE_HUGE; }
++#endif
+ 
+ static inline pte_t pte_wrprotect(pte_t pte)
+ {
+@@ -267,7 +297,12 @@ static inline pte_t pte_wrprotect(pte_t
+ 
+ static inline pte_t pte_rdprotect(pte_t pte)
+ {
++#ifdef _PAGE_NO_READ
++	pte_val(pte) &= ~_PAGE_SILENT_READ;
++	pte_val(pte) |= _PAGE_NO_READ;
++#else
+ 	pte_val(pte) &= ~(_PAGE_READ | _PAGE_SILENT_READ);
++#endif
+ 	return pte;
+ }
+ 
+@@ -293,9 +328,15 @@ static inline pte_t pte_mkwrite(pte_t pt
+ 
+ static inline pte_t pte_mkread(pte_t pte)
+ {
++#ifdef _PAGE_NO_READ
++	pte_val(pte) &= _PAGE_NO_READ;
++	if (pte_val(pte) & _PAGE_ACCESSED)
++		pte_val(pte) |= _PAGE_SILENT_READ;
++#else
+ 	pte_val(pte) |= _PAGE_READ;
+ 	if (pte_val(pte) & _PAGE_ACCESSED)
+ 		pte_val(pte) |= _PAGE_SILENT_READ;
++#endif
+ 	return pte;
+ }
+ 
+@@ -309,11 +350,25 @@ static inline pte_t pte_mkdirty(pte_t pt
+ 
+ static inline pte_t pte_mkyoung(pte_t pte)
+ {
++#ifdef _PAGE_NO_READ
++	pte_val(pte) |= _PAGE_ACCESSED;
++	if (!(pte_val(pte) & _PAGE_NO_READ))
++		pte_val(pte) |= _PAGE_SILENT_READ;
++#else
+ 	pte_val(pte) |= _PAGE_ACCESSED;
+ 	if (pte_val(pte) & _PAGE_READ)
+ 		pte_val(pte) |= _PAGE_SILENT_READ;
++#endif
+ 	return pte;
+ }
++
++#ifdef CONFIG_HUGETLB_PAGE
++static inline pte_t pte_mkhuge(pte_t pte)
++{
++	pte_val(pte) |= _PAGE_HUGE;
++	return pte;
++}
++#endif
+ #endif
+ 
+ /*
+--- a/include/asm-mips/processor.h
++++ b/include/asm-mips/processor.h
+@@ -55,7 +55,11 @@ extern unsigned int vced_count, vcei_cou
+  * support 16TB; the architectural reserve for future expansion is
+  * 8192EB ...
+  */
++#ifdef CONFIG_CAVIUM_RESERVE32_USE_WIRED_TLB
++#define TASK_SIZE32	(0x7fff8000UL - (CONFIG_CAVIUM_RESERVE32<<20))
++#else
+ #define TASK_SIZE32	0x7fff8000UL
++#endif
+ #define TASK_SIZE	0x10000000000UL
+ 
+ /*
+@@ -101,6 +105,39 @@ struct mips_dsp_state {
+ 	{0,} \
+ }
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++
++struct octeon_cop2_state {
++    unsigned long long cop2_crc_iv;        /* DMFC2 rt, 0x0201 */
++    unsigned long long cop2_crc_length;    /* DMFC2 rt, 0x0202 (Set with DMTC2 rt, 0x1202) */
++    unsigned long long cop2_crc_poly;      /* DMFC2 rt, 0x0200 (set with DMTC2 rt, 0x4200) */
++
++    unsigned long long cop2_llm_dat[2];    /* DMFC2 rt, 0x0402; DMFC2 rt, 0x040A */
++
++    unsigned long long cop2_3des_iv;       /* DMFC2 rt, 0x0084 */
++    unsigned long long cop2_3des_key[3];   /* DMFC2 rt, 0x0080; DMFC2 rt, 0x0081; DMFC2 rt, 0x0082 */
++    unsigned long long cop2_3des_result;   /* DMFC2 rt, 0x0088 (Set with DMTC2 rt, 0x0098) */
++    unsigned long long cop2_aes_inp0;      /* DMFC2 rt, 0x0111 (FIXME: Read Pass1 Errata) */
++    unsigned long long cop2_aes_iv[2];     /* DMFC2 rt, 0x0102; DMFC2 rt, 0x0103 */
++    unsigned long long cop2_aes_key[4];    /* DMFC2 rt, 0x0104; DMFC2 rt, 0x0105; DMFC2 rt, 0x0106; DMFC2 rt, 0x0107 */
++    unsigned long long cop2_aes_keylen;    /* DMFC2 rt, 0x0110 */
++    unsigned long long cop2_aes_result[2]; /* DMFC2 rt, 0x0100; DMFC2 rt, 0x0101 */
++
++    unsigned long long cop2_hsh_datw[15];  /* DMFC2 rt, 0x0240; DMFC2 rt, 0x0241; DMFC2 rt, 0x0242; DMFC2 rt, 0x0243; DMFC2 rt, 0x0244; DMFC2 rt, 0x0245; DMFC2 rt, 0x0246; DMFC2 rt, 0x0247; DMFC2 rt, 0x0248; DMFC2 rt, 0x0249; DMFC2 rt, 0x024A; DMFC2 rt, 0x024B; DMFC2 rt, 0x024C; DMFC2 rt, 0x024D; DMFC2 rt, 0x024E - Pass2 */
++    unsigned long long cop2_hsh_ivw[8];    /* DMFC2 rt, 0x0250; DMFC2 rt, 0x0251; DMFC2 rt, 0x0252; DMFC2 rt, 0x0253; DMFC2 rt, 0x0254; DMFC2 rt, 0x0255; DMFC2 rt, 0x0256; DMFC2 rt, 0x0257 - Pass2 */
++    unsigned long long cop2_gfm_mult[2];   /* DMFC2 rt, 0x0258; DMFC2 rt, 0x0259 - Pass2 */
++    unsigned long long cop2_gfm_poly;      /* DMFC2 rt, 0x025E - Pass2 */
++    unsigned long long cop2_gfm_result[2]; /* DMFC2 rt, 0x025A; DMFC2 rt, 0x025B - Pass2 */
++};
++#define INIT_OCTEON_COP2 {0,}
++
++struct octeon_cvmseg_state {
++    unsigned long   cvmseg[CONFIG_CAVIUM_OCTEON_CVMSEG_SIZE][cpu_dcache_line_size()/sizeof(unsigned long)];
++};
++#define INIT_OCTEON_CVMSEG {{{0,},}}
++
++#endif
++
+ typedef struct {
+ 	unsigned long seg;
+ } mm_segment_t;
+@@ -146,6 +183,10 @@ struct thread_struct {
+ 	unsigned long mflags;
+ 	unsigned long irix_trampoline;  /* Wheee... */
+ 	unsigned long irix_oldctx;
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++    struct octeon_cop2_state cp2 __attribute__ ((__aligned__(128)));
++    struct octeon_cvmseg_state cvmseg __attribute__ ((__aligned__(128)));
++#endif
+ 	struct mips_abi *abi;
+ };
+ 
+@@ -189,7 +230,12 @@ struct thread_struct {
+ 	/* \
+ 	 * For now the default is to fix address errors \
+ 	 */ \
+-	MF_FIXADE, 0, 0 \
++	MF_FIXADE, 0, 0, \
++	/* \
++	 * saved Octeon Cop2 and CVMSEG \
++	 */ \
++    INIT_OCTEON_COP2, \
++    INIT_OCTEON_CVMSEG \
+ }
+ 
+ struct task_struct;
+--- a/include/asm-mips/ptrace.h
++++ b/include/asm-mips/ptrace.h
+@@ -49,6 +49,10 @@ struct pt_regs {
+ #ifdef CONFIG_MIPS_MT_SMTC
+ 	unsigned long cp0_tcstatus;
+ #endif /* CONFIG_MIPS_MT_SMTC */
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	unsigned long long mpl[3];        /* MTM{0,1,2} */
++	unsigned long long mtp[3];        /* MTP{0,1,2} */
++#endif
+ } __attribute__ ((aligned (8)));
+ 
+ /* Arbitrarily choose the same ptrace numbers as used by the Sparc code. */
+--- a/include/asm-mips/smp.h
++++ b/include/asm-mips/smp.h
+@@ -45,6 +45,7 @@ extern struct call_data_struct *call_dat
+ 
+ #define SMP_RESCHEDULE_YOURSELF	0x1	/* XXX braindead */
+ #define SMP_CALL_FUNCTION	0x2
++#define SMP_ICACHE_FLUSH	0x4     /* Octeon - Tell another core to flush its icache */
+ 
+ extern cpumask_t phys_cpu_present_map;
+ #define cpu_possible_map	phys_cpu_present_map
+--- a/include/asm-mips/sparsemem.h
++++ b/include/asm-mips/sparsemem.h
+@@ -6,7 +6,12 @@
+  * SECTION_SIZE_BITS		2^N: how big each section will be
+  * MAX_PHYSMEM_BITS		2^N: how much memory we can have in that space
+  */
++#if defined(CONFIG_PAGE_SIZE_64KB) && defined(CONFIG_HUGETLB_PAGE) 
++/* We need bigger sections with 64KB in order to support 512MB hugetlb */
++#define SECTION_SIZE_BITS       29
++#else
+ #define SECTION_SIZE_BITS       28
++#endif
+ #define MAX_PHYSMEM_BITS        35
+ 
+ #endif /* CONFIG_SPARSEMEM */
+--- a/include/asm-mips/spinlock.h
++++ b/include/asm-mips/spinlock.h
+@@ -16,10 +16,17 @@
+  * Your basic SMP spinlocks, allowing only a single CPU anywhere
+  */
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++#define __raw_spin_is_locked(x) ((x)->now_serving != (x)->ticket)
++#define __raw_spin_lock_flags(lock, flags) __raw_spin_lock(lock)
++#define __raw_spin_unlock_wait(x) \
++	do { cpu_relax(); } while (__raw_spin_is_locked(x))
++#else
+ #define __raw_spin_is_locked(x)       ((x)->lock != 0)
+ #define __raw_spin_lock_flags(lock, flags) __raw_spin_lock(lock)
+ #define __raw_spin_unlock_wait(x) \
+ 	do { cpu_relax(); } while ((x)->lock)
++#endif
+ 
+ /*
+  * Simple spin lock operations.  There are two variants, one clears IRQ's
+@@ -30,6 +37,44 @@
+ 
+ static inline void __raw_spin_lock(raw_spinlock_t *lock)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	int tmp;
++	int my_ticket;
++	__asm__ __volatile__ (
++	"	.set push					\n"
++	"	.set noreorder					\n"
++	"1:							\n"
++	"	ll	%[my_ticket], %[ticket_ptr]		\n"
++	"	li	%[ticket], 1				\n"
++	"	addu	%[ticket], %[my_ticket]			\n"
++	"	sc	%[ticket], %[ticket_ptr]		\n"
++	"	beqz	%[ticket], 1b				\n"
++	"	 syncw						\n"
++	"	syncw						\n"
++	"	lw	%[ticket], %[now_serving]		\n"
++	"	bne	%[ticket], %[my_ticket], 2f		\n"
++	"	 subu	%[ticket], %[my_ticket], %[ticket]	\n"
++	"4:							\n"
++	"	.subsection 2					\n"
++	"2:							\n"
++	"	subu	%[ticket], 1				\n"
++	"	sll	%[ticket], 5				\n"
++	"3:							\n"
++	"	bnez	%[ticket], 3b				\n"
++	"	 subu	%[ticket], 1				\n"
++	"	lw	%[ticket], %[now_serving]		\n"
++	"	beq	%[ticket], %[my_ticket], 4b		\n"
++	"	 subu	%[ticket], %[my_ticket], %[ticket]	\n"
++	"	subu	%[ticket], 1				\n"
++	"	b	3b					\n"
++	"	 sll	%[ticket], 5				\n"
++	"	.previous					\n"
++	"	.set pop					\n"
++	: [ticket_ptr] "=m" (lock->ticket),
++	[now_serving] "=m" (lock->now_serving),
++	[ticket] "=r" (tmp),
++	[my_ticket] "=r" (my_ticket));
++#else
+ 	unsigned int tmp;
+ 
+ 	if (R10000_LLSC_WAR) {
+@@ -68,10 +113,18 @@ static inline void __raw_spin_lock(raw_s
+ 	}
+ 
+ 	smp_mb();
++#endif
+ }
+ 
+ static inline void __raw_spin_unlock(raw_spinlock_t *lock)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	int now_serving = lock->now_serving;
++	wmb();
++	if (likely(now_serving != lock->ticket))
++		lock->now_serving = now_serving+1;
++	wmb();
++#else
+ 	smp_mb();
+ 
+ 	__asm__ __volatile__(
+@@ -81,10 +134,17 @@ static inline void __raw_spin_unlock(raw
+ 	: "=m" (lock->lock)
+ 	: "m" (lock->lock)
+ 	: "memory");
++#endif
+ }
+ 
+ static inline unsigned int __raw_spin_trylock(raw_spinlock_t *lock)
+ {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	if (__raw_spin_is_locked(lock))
++		return 0;
++	__raw_spin_lock(lock);
++	return 1;
++#else
+ 	unsigned int temp, res;
+ 
+ 	if (R10000_LLSC_WAR) {
+@@ -121,6 +181,7 @@ static inline unsigned int __raw_spin_tr
+ 	smp_mb();
+ 
+ 	return res == 0;
++#endif
+ }
+ 
+ /*
+@@ -162,6 +223,21 @@ static inline void __raw_read_lock(raw_r
+ 		: "m" (rw->lock)
+ 		: "memory");
+ 	} else {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		__asm__ __volatile__(
++		"	.set	noreorder	# _raw_read_lock	\n"
++		OCTEON_SYNCW_STR
++		"1:	ll	%1, %2					\n"
++		"	bltz	%1, 1b					\n"
++		"	 addu	%1, 1					\n"
++		"	sc	%1, %0					\n"
++		"	beqz	%1, 1b					\n"
++		"	 nop						\n"
++		"	.set	reorder					\n"
++		: "=m" (rw->lock), "=&r" (tmp)
++		: "m" (rw->lock)
++		: "memory");
++#else
+ 		__asm__ __volatile__(
+ 		"	.set	noreorder	# __raw_read_lock	\n"
+ 		"1:	ll	%1, %2					\n"
+@@ -181,6 +257,7 @@ static inline void __raw_read_lock(raw_r
+ 		: "=m" (rw->lock), "=&r" (tmp)
+ 		: "m" (rw->lock)
+ 		: "memory");
++#endif
+ 	}
+ 
+ 	smp_mb();
+@@ -205,6 +282,20 @@ static inline void __raw_read_unlock(raw
+ 		: "m" (rw->lock)
+ 		: "memory");
+ 	} else {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		__asm__ __volatile__(
++		"	.set	noreorder	# _raw_read_unlock	\n"
++		OCTEON_SYNCW_STR
++		"1:	ll	%1, %2					\n"
++		"	sub	%1, 1					\n"
++		"	sc	%1, %0					\n"
++		"	beqz	%1, 1b					\n"
++		"	 nop						\n"
++		"	.set	reorder					\n"
++		: "=m" (rw->lock), "=&r" (tmp)
++		: "m" (rw->lock)
++		: "memory");
++#else
+ 		__asm__ __volatile__(
+ 		"	.set	noreorder	# __raw_read_unlock	\n"
+ 		"1:	ll	%1, %2					\n"
+@@ -220,6 +311,7 @@ static inline void __raw_read_unlock(raw
+ 		: "=m" (rw->lock), "=&r" (tmp)
+ 		: "m" (rw->lock)
+ 		: "memory");
++#endif
+ 	}
+ }
+ 
+@@ -241,6 +333,21 @@ static inline void __raw_write_lock(raw_
+ 		: "m" (rw->lock)
+ 		: "memory");
+ 	} else {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		__asm__ __volatile__(
++		"	.set	noreorder	# _raw_write_lock	\n"
++		OCTEON_SYNCW_STR
++		"1:	ll	%1, %2					\n"
++		"	bnez	%1, 1b					\n"
++		"	 lui	%1, 0x8000				\n"
++		"	sc	%1, %0					\n"
++		"	beqz	%1, 1b					\n"
++		"	 nop						\n"
++		"	.set	reorder					\n"
++		: "=m" (rw->lock), "=&r" (tmp)
++		: "m" (rw->lock)
++		: "memory");
++#else
+ 		__asm__ __volatile__(
+ 		"	.set	noreorder	# __raw_write_lock	\n"
+ 		"1:	ll	%1, %2					\n"
+@@ -260,6 +367,7 @@ static inline void __raw_write_lock(raw_
+ 		: "=m" (rw->lock), "=&r" (tmp)
+ 		: "m" (rw->lock)
+ 		: "memory");
++#endif
+ 	}
+ 
+ 	smp_mb();
+@@ -272,6 +380,9 @@ static inline void __raw_write_unlock(ra
+ 	__asm__ __volatile__(
+ 	"				# __raw_write_unlock	\n"
+ 	"	sw	$0, %0					\n"
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++	OCTEON_SYNCW_STR
++#endif
+ 	: "=m" (rw->lock)
+ 	: "m" (rw->lock)
+ 	: "memory");
+@@ -344,6 +455,24 @@ static inline int __raw_write_trylock(ra
+ 		: "m" (rw->lock)
+ 		: "memory");
+ 	} else {
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		__asm__ __volatile__(
++		"	.set	noreorder	# _raw_write_trylock	\n"
++		OCTEON_SYNCW_STR
++		"	li	%2, 0					\n"
++		"1:	ll	%1, %3					\n"
++		"	bnez	%1, 2f					\n"
++		"	lui	%1, 0x8000				\n"
++		"	sc	%1, %0					\n"
++		"	beqz	%1, 1b					\n"
++		"	 nop						\n"
++		"	li	%2, 1					\n"
++		"	.set	reorder					\n"
++		"2:							\n"
++		: "=m" (rw->lock), "=&r" (tmp), "=&r" (ret)
++		: "m" (rw->lock)
++		: "memory");
++#else
+ 		__asm__ __volatile__(
+ 		"	.set	noreorder	# __raw_write_trylock	\n"
+ 		"	li	%2, 0					\n"
+@@ -363,6 +492,7 @@ static inline int __raw_write_trylock(ra
+ 		: "=m" (rw->lock), "=&r" (tmp), "=&r" (ret)
+ 		: "m" (rw->lock)
+ 		: "memory");
++#endif
+ 	}
+ 
+ 	return ret;
+--- a/include/asm-mips/spinlock_types.h
++++ b/include/asm-mips/spinlock_types.h
+@@ -5,11 +5,20 @@
+ # error "please don't include this file directly"
+ #endif
+ 
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++typedef struct {
++	volatile unsigned int ticket;
++	volatile unsigned int now_serving;
++} raw_spinlock_t;
++
++#define __RAW_SPIN_LOCK_UNLOCKED	{ 0, 0 }
++#else
+ typedef struct {
+ 	volatile unsigned int lock;
+ } raw_spinlock_t;
+ 
+ #define __RAW_SPIN_LOCK_UNLOCKED	{ 0 }
++#endif
+ 
+ typedef struct {
+ 	volatile unsigned int lock;
+--- a/include/asm-mips/stackframe.h
++++ b/include/asm-mips/stackframe.h
+@@ -38,10 +38,12 @@
+ 		LONG_S	v1, PT_ACX(sp)
+ #else
+ 		mfhi	v1
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		LONG_S	v1, PT_HI(sp)
+ 		mflo	v1
+ 		LONG_S	v1, PT_LO(sp)
+ #endif
++#endif
+ #ifdef CONFIG_32BIT
+ 		LONG_S	$8, PT_R8(sp)
+ 		LONG_S	$9, PT_R9(sp)
+@@ -49,10 +51,17 @@
+ 		LONG_S	$10, PT_R10(sp)
+ 		LONG_S	$11, PT_R11(sp)
+ 		LONG_S	$12, PT_R12(sp)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		LONG_S	v1, PT_HI(sp)
++		mflo	v1
++#endif
+ 		LONG_S	$13, PT_R13(sp)
+ 		LONG_S	$14, PT_R14(sp)
+ 		LONG_S	$15, PT_R15(sp)
+ 		LONG_S	$24, PT_R24(sp)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		LONG_S	v1, PT_LO(sp)
++#endif
+ 		.endm
+ 
+ 		.macro	SAVE_STATIC
+@@ -145,7 +154,9 @@
+ 		LONG_S	$0, PT_R0(sp)
+ 		mfc0	v1, CP0_STATUS
+ 		LONG_S	$2, PT_R2(sp)
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		LONG_S	v1, PT_STATUS(sp)
++#endif
+ #ifdef CONFIG_MIPS_MT_SMTC
+ 		/*
+ 		 * Ideally, these instructions would be shuffled in
+@@ -157,22 +168,52 @@
+ 		LONG_S	v1, PT_TCSTATUS(sp)
+ #endif /* CONFIG_MIPS_MT_SMTC */
+ 		LONG_S	$4, PT_R4(sp)
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		mfc0	v1, CP0_CAUSE
++#endif
+ 		LONG_S	$5, PT_R5(sp)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		LONG_S	v1, PT_STATUS(sp)
++		mfc0	v1, CP0_CAUSE
++#else
+ 		LONG_S	v1, PT_CAUSE(sp)
++#endif
+ 		LONG_S	$6, PT_R6(sp)
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		MFC0	v1, CP0_EPC
++#endif
+ 		LONG_S	$7, PT_R7(sp)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		LONG_S	v1, PT_CAUSE(sp)
++		MFC0	v1, CP0_EPC
++#endif
+ #ifdef CONFIG_64BIT
+ 		LONG_S	$8, PT_R8(sp)
+ 		LONG_S	$9, PT_R9(sp)
+ #endif
++#ifndef CONFIG_CPU_CAVIUM_OCTEON
+ 		LONG_S	v1, PT_EPC(sp)
++#endif
+ 		LONG_S	$25, PT_R25(sp)
+ 		LONG_S	$28, PT_R28(sp)
+ 		LONG_S	$31, PT_R31(sp)
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		LONG_S	v1, PT_EPC(sp)
++#endif
+ 		ori	$28, sp, _THREAD_MASK
+ 		xori	$28, _THREAD_MASK
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		.set    mips64
++		pref    0, 0($28)       /* Prefetch the current pointer */
++		pref    0, PT_R31(sp)   /* Prefetch the $31(ra) */
++		/* The Octeon multiplier state is affected by general multiply
++		    instructions. It must be saved before and kernel code might
++		    corrupt it */
++		jal	octeon_mult_save
++		LONG_L	v1, 0($28)	/* Load the current pointer */
++		LONG_L	ra, PT_R31(sp)	/* Restore $31(ra) that was changed by the jal */
++		pref	0, 0(v1)	/* Prefetch the current thread */
++#endif
+ 		.set	pop
+ 		.endm
+ 
+@@ -200,9 +241,9 @@
+ 		mtlhx	$24
+ #else
+ 		LONG_L	$24, PT_LO(sp)
++		LONG_L	$10, PT_HI(sp)
+ 		mtlo	$24
+-		LONG_L	$24, PT_HI(sp)
+-		mthi	$24
++		mthi	$10
+ #endif
+ #ifdef CONFIG_32BIT
+ 		LONG_L	$8, PT_R8(sp)
+@@ -300,6 +341,10 @@
+ 		DMT	5				# dmt a1
+ 		jal	mips_ihb
+ #endif /* CONFIG_MIPS_MT_SMTC */
++#ifdef CONFIG_CPU_CAVIUM_OCTEON
++		/* Restore the Octeon multiplier state */
++		jal	octeon_mult_restore
++#endif
+ 		mfc0	a0, CP0_STATUS
+ 		ori	a0, STATMASK
+ 		xori	a0, STATMASK
+@@ -352,6 +397,9 @@
+ 		.macro	RESTORE_SP_AND_RET
+ 		LONG_L	sp, PT_R29(sp)
+ 		.set	mips3
++#ifdef CONFIG_FAST_ACCESS_TO_THREAD_POINTER
++		LONG_L	k0, FAST_ACCESS_THREAD_OFFSET($0) /* K0 = thread pointer */
++#endif
+ 		eret
+ 		.set	mips0
+ 		.endm
+--- a/include/asm-mips/thread_info.h
++++ b/include/asm-mips/thread_info.h
+@@ -75,6 +75,9 @@ register struct thread_info *__current_t
+ #ifdef CONFIG_PAGE_SIZE_16KB
+ #define THREAD_SIZE_ORDER (0)
+ #endif
++#ifdef CONFIG_PAGE_SIZE_32KB
++#define THREAD_SIZE_ORDER (0)
++#endif
+ #ifdef CONFIG_PAGE_SIZE_64KB
+ #define THREAD_SIZE_ORDER (0)
+ #endif
+--- a/include/asm-mips/timex.h
++++ b/include/asm-mips/timex.h
+@@ -46,11 +46,28 @@
+  * We know that all SMP capable CPUs have cycle counters.
+  */
+ 
++#if defined(CONFIG_CPU_CAVIUM_OCTEON)
++/* Since the Octeon supports a 64 bit cycle counter we might as well use
++	it. We can't use it with an O32 kernel since 64bit registers are not
++	saved. */
++typedef unsigned long cycles_t;
++#else
+ typedef unsigned int cycles_t;
++#endif
+ 
+ static inline cycles_t get_cycles (void)
+ {
++#if defined(CONFIG_CPU_CAVIUM_OCTEON)
++    cycles_t result;
++    asm volatile ("rdhwr %0,$31\n"
++#ifndef CONFIG_64BIT
++                  "sll %0,0\n"
++#endif
++                  : "=r" (result));
++    return result;
++#else
+ 	return read_c0_count();
++#endif
+ }
+ 
+ #endif /* __KERNEL__ */
+--- a/include/asm-mips/uaccess.h
++++ b/include/asm-mips/uaccess.h
+@@ -104,8 +104,14 @@
+ 
+ #define __access_mask get_fs().seg
+ 
++/* __access_ok fix: "addr + size" may be outside of the program if the data is 
++    exactly at the end. Correct check is for "addr + size - 1". */
++
++#define __access_end(addr, size)                                        \
++        ((size) != 0 ? (addr) + (size) - 1 : (addr))
++
+ #define __access_ok(addr, size, mask)					\
+-	(((signed long)((mask) & ((addr) | ((addr) + (size)) | __ua_size(size)))) == 0)
++	(((signed long)((mask) & ((addr) | __access_end(addr,size) | __ua_size(size)))) == 0)
+ 
+ #define access_ok(type, addr, size)					\
+ 	likely(__access_ok((unsigned long)(addr), (size),__access_mask))
+--- a/kernel/fork.c
++++ b/kernel/fork.c
+@@ -68,6 +68,7 @@ int max_threads;		/* tunable limit on nr
+ DEFINE_PER_CPU(unsigned long, process_counts) = 0;
+ 
+ __cacheline_aligned DEFINE_RWLOCK(tasklist_lock);  /* outer */
++EXPORT_SYMBOL(tasklist_lock);
+ 
+ int nr_processes(void)
+ {
+--- a/kernel/irq/chip.c
++++ b/kernel/irq/chip.c
+@@ -503,7 +503,6 @@ out_unlock:
+ 	spin_unlock(&desc->lock);
+ }
+ 
+-#ifdef CONFIG_SMP
+ /**
+  *	handle_percpu_IRQ - Per CPU local irq handler
+  *	@irq:	the interrupt number
+@@ -529,7 +528,6 @@ handle_percpu_irq(unsigned int irq, stru
+ 		desc->chip->eoi(irq);
+ }
+ 
+-#endif /* CONFIG_SMP */
+ 
+ void
+ __set_irq_handler(unsigned int irq, irq_flow_handler_t handle, int is_chained,
+--- a/kernel/irq/handle.c
++++ b/kernel/irq/handle.c
+@@ -134,6 +134,11 @@ irqreturn_t handle_IRQ_event(unsigned in
+ 
+ 	handle_dynamic_tick(action);
+ 
++	if (unlikely(!action)) {
++		printk("IRQ: spurious irq %d\n", irq);
++		return retval;
++	}
++
+ 	if (!(action->flags & IRQF_DISABLED))
+ 		local_irq_enable_in_hardirq();
+ 
+--- a/kernel/sched.c
++++ b/kernel/sched.c
+@@ -278,7 +278,7 @@ struct rq {
+ 	struct lock_class_key rq_lock_key;
+ };
+ 
+-static DEFINE_PER_CPU(struct rq, runqueues);
++static DEFINE_PER_CPU(struct rq, runqueues) ____cacheline_aligned_in_smp;
+ 
+ static inline int cpu_of(struct rq *rq)
+ {

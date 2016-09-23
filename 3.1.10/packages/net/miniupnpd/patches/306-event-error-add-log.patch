@@ -1,0 +1,11 @@
+--- a/upnpevents.c
++++ b/upnpevents.c
+@@ -422,6 +422,8 @@ void upnpevents_processfds(fd_set *reads
+ 				obj->sub->notify = NULL;
+ 			/* remove also the subscriber from the list if there was an error */
+ 			if(obj->state == EError && obj->sub) {
++                                syslog(LOG_ERR, "%s: %p, remove subscriber '%p' after an ERROR",
++                                       "upnpevents_processfds", obj, obj->sub);
+ 				LIST_REMOVE(obj->sub, entries);
+ 				free(obj->sub);
+ 			}

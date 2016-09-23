@@ -1,0 +1,162 @@
+--- a/getifaddr.c
++++ b/getifaddr.c
+@@ -21,37 +21,58 @@
+ #include "getifaddr.h"
+ 
+ int
+-getifaddr(const char * ifname, char * buf, int len)
++getifaddr_in(const char *ifname, struct in_addr *addr)
+ {
+-	/* SIOCGIFADDR struct ifreq *  */
++        /* SIOCGIFADDR struct ifreq *  */
+ 	int s;
+ 	struct ifreq ifr;
+ 	int ifrlen;
+-	struct sockaddr_in * addr;
+-	ifrlen = sizeof(ifr);
++
+ 	if(!ifname || ifname[0]=='\0')
+ 		return -1;
++        
+ 	s = socket(PF_INET, SOCK_DGRAM, 0);
+ 	if(s < 0)
+ 	{
+ 		syslog(LOG_ERR, "socket(PF_INET, SOCK_DGRAM): %m");
+ 		return -1;
+ 	}
+-	strncpy(ifr.ifr_name, ifname, IFNAMSIZ);
++        
++        memset(&ifr, 0, sizeof(ifr));
++        ifr.ifr_addr.sa_family = AF_INET; /* IPv4 IP address */
++	strncpy(ifr.ifr_name, ifname, IFNAMSIZ-1);
++	ifrlen = sizeof(ifr);
++
+ 	if(ioctl(s, SIOCGIFADDR, &ifr, &ifrlen) < 0)
+ 	{
+-		syslog(LOG_ERR, "ioctl(s, SIOCGIFADDR, ...): %m");
++		syslog(LOG_DEBUG, "ioctl(s, SIOCGIFADDR, ...): %m");
+ 		close(s);
+ 		return -1;
+ 	}
+-	addr = (struct sockaddr_in *)&ifr.ifr_addr;
+-	if(!inet_ntop(AF_INET, &addr->sin_addr, buf, len))
++        
++	*addr = ((struct sockaddr_in *)&ifr.ifr_addr)->sin_addr;
++
++	close(s);
++
++	return 0;
++}
++
++int
++getifaddr(const char * ifname, char * buf, int len)
++{
++        struct in_addr addr;
++        
++	if(getifaddr_in(ifname, &addr) != 0)
++        {
++                return -1;
++        }
++
++	if(!inet_ntop(AF_INET, &addr, buf, len))
+ 	{
+ 		syslog(LOG_ERR, "inet_ntop(): %m");
+-		close(s);
+ 		return -1;
+ 	}
+-	close(s);
++	
+ 	return 0;
+ }
+ 
+--- a/getifaddr.h
++++ b/getifaddr.h
+@@ -8,6 +8,13 @@
+ #ifndef __GETIFADDR_H__
+ #define __GETIFADDR_H__
+ 
++/* getifsinaddr()
++ * take a network interface name and write the
++ * struct in_addr *addr
++ * returns: 0 success, -1 failure */
++int
++getifaddr_in(const char * ifname, struct in_addr *addr);
++
+ /* getifaddr()
+  * take a network interface name and write the
+  * ip v4 address as text in the buffer
+--- a/miniupnpd.c
++++ b/miniupnpd.c
+@@ -14,6 +14,7 @@
+ #include <sys/socket.h>
+ #include <netinet/in.h>
+ #include <arpa/inet.h>
++#include <net/if.h>
+ #include <fcntl.h>
+ #include <sys/file.h>
+ #include <syslog.h>
+@@ -770,6 +771,15 @@ init(int argc, char * * argv, struct run
+ 	reload_from_lease_file();
+ #endif
+ 
++#ifdef ENABLE_EVENTS
++        /* get the current wan iface ip address */
++        if(getifaddr_in(ext_if_name, &wan_if_addr) != 0)
++        {
++                syslog(LOG_NOTICE, "Failed to get wan ip addr.");
++                /* continue .. */
++        }
++#endif
++
+ 	return 0;
+ }
+ 
+@@ -804,6 +814,8 @@ main(int argc, char * * argv)
+ 	struct rule_state * rule_list = 0;
+ 	struct timeval checktime = {0, 0};
+ 
++        struct in_addr current_if_addr;
++
+ 	if(init(argc, argv, &v) != 0)
+ 		return 1;
+ 
+@@ -1083,6 +1095,19 @@ main(int argc, char * * argv)
+ #endif
+ #ifdef ENABLE_EVENTS
+ 		upnpevents_processfds(&readset, &writeset);
++                
++                /* lookup if wan ip addr has changed */
++                if(getifaddr_in(ext_if_name, &current_if_addr) == 0)
++                {
++                        if(wan_if_addr.s_addr != current_if_addr.s_addr)
++                        {
++                                /* event ! */
++                                upnp_event_var_change_notify(EWanIPC);
++                                
++                                /* up */
++                                wan_if_addr.s_addr = current_if_addr.s_addr;
++                        }
++                }
+ #endif
+ #ifdef ENABLE_NATPMP
+ 		/* process NAT-PMP packets */
+--- a/upnpglobalvars.c
++++ b/upnpglobalvars.c
+@@ -13,6 +13,7 @@
+ 
+ /* network interface for internet */
+ const char * ext_if_name = 0;
++struct in_addr wan_if_addr = { .s_addr = 0, };
+ 
+ /* file to store leases */
+ #ifdef ENABLE_LEASEFILE
+--- a/upnpglobalvars.h
++++ b/upnpglobalvars.h
+@@ -15,6 +15,7 @@
+ 
+ /* name of the network interface used to acces internet */
+ extern const char * ext_if_name;
++extern struct in_addr wan_if_addr;
+ 
+ /* file to store all leases */
+ #ifdef ENABLE_LEASEFILE

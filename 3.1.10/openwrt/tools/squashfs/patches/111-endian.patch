@@ -1,0 +1,10 @@
+--- a/squashfs-tools/unsquashfs.c
++++ b/squashfs-tools/unsquashfs.c
+@@ -2180,6 +2180,7 @@ int read_super(char *source)
+ 		SQUASHFS_SWAP_SUPER_BLOCK(&sblk, &sBlk);
+ 		memcpy(&sBlk, &sblk, sizeof(squashfs_super_block));
+ 		swap = 1;
++		break;
+ 	default:
+ 		ERROR("Can't find a SQUASHFS superblock on %s\n", source);
+ 		goto failed_mount;

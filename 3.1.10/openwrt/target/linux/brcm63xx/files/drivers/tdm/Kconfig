@@ -1,0 +1,28 @@
+#
+# TDM bus configuration
+#
+menuconfig TDM
+	   bool "TDM support"
+	   help
+             A TDM bus is one application of the principle of time-division
+	     multiplexing.
+
+	     In a TDM Bus, data or information arriving from an input line is
+	     put onto specific timeslots on a high-speed bus, where a recipient
+	     would listen to the bus and pick out only the signals for
+	     a certain timeslot.
+
+	     It resembles the TDM carried out in synchronous optical
+	     networking, but the "TDM Bus" term is more commonly used when the
+	     bus is inside a single unit like a telecommunications switch or a
+	     PC.
+
+if TDM
+
+config TDM_BCM63XX
+       tristate "Broadcom BCM63xx TDM controller"
+       depends on BCM63XX
+       help
+         TDM driver for the Broadcom BCM63xx TDM controller.
+
+endif # TDM

@@ -1,0 +1,11 @@
+--- a/drivers/net/ppp_generic.c
++++ b/drivers/net/ppp_generic.c
+@@ -477,6 +477,8 @@ static ssize_t ppp_write(struct file *fi
+ 		goto out;
+ 	}
+ 
++	/* Push LCP packet to High QoS */
++	skb->mark = 3;
+ 	skb_queue_tail(&pf->xq, skb);
+ 
+ 	switch (pf->kind) {

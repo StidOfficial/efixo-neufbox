@@ -1,0 +1,28 @@
+--- a/pppd/plugins/rp-pppoe/common.c
++++ b/pppd/plugins/rp-pppoe/common.c
+@@ -402,7 +402,12 @@ sendPADT(PPPoEConnection *conn, char con
+     if (!conn->session) return;
+ 
+     /* Do nothing if no discovery socket */
+-    if (conn->discoverySocket < 0) return;
++    if (conn->discoverySocket < 0) {
++	    conn->discoverySocket =
++		    openInterface(conn->ifName, Eth_PPPOE_Discovery, conn->myEth);
++	    if (conn->discoverySocket < 0)
++		    return;
++    }
+ 
+     memcpy(packet.ethHdr.h_dest, conn->peerEth, ETH_ALEN);
+     memcpy(packet.ethHdr.h_source, conn->myEth, ETH_ALEN);
+--- a/pppd/plugins/rp-pppoe/discovery.c
++++ b/pppd/plugins/rp-pppoe/discovery.c
+@@ -798,6 +798,9 @@ discovery(PPPoEConnection *conn)
+ #endif
+     } while (conn->discoveryState == STATE_SENT_PADR);
+ 
++    close(conn->discoverySocket);
++    conn->discoverySocket = -1;
++
+     /* We're done. */
+     conn->discoveryState = STATE_SESSION;
+     return;

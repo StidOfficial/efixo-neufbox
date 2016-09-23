@@ -1,0 +1,245 @@
+--- a/include/linux/atmbr2684.h
++++ b/include/linux/atmbr2684.h
+@@ -78,6 +78,13 @@ struct atm_backend_br2684 {
+ 	__u8	vpn_id[7];
+ 	int	send_padding;	/* unsupported */
+ 	int	min_size;	/* we will pad smaller packets than this */
++#if defined(CONFIG_MIPS_BRCM)
++#define FILTER_PPPOE    1
++        int     proto_filter;   /* protocol filter flag, current only PPPoE */
++        unsigned short  vlan_id;        /* vlan id (0-4096) */
++        int     extif;          /* interface idx for MSP feature */
++
++#endif
+ };
+ 
+ /*
+--- a/drivers/net/ppp_generic.c
++++ b/drivers/net/ppp_generic.c
+@@ -50,6 +50,14 @@
+ 
+ #define PPP_VERSION	"2.4.2"
+ 
++#if defined(CONFIG_MIPS_BRCM)
++#include <linux/in.h>
++#include <linux/netfilter.h>
++#define QOS_HIGH_PRIO	3
++#define QOS_MED_PRIO	2
++#define QOS_LOW_PRIO	1
++#endif
++
+ /*
+  * Network protocols we support.
+  */
+@@ -470,6 +478,13 @@ static ssize_t ppp_write(struct file *fi
+ 		kfree_skb(skb);
+ 		goto out;
+ 	}
++	
++#if defined(CONFIG_MIPS_BRCM)	
++	skb->mark = QOS_HIGH_PRIO;
++	// !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
++	// member below is removed
++	//skb->nfcache |= NFC_ALTERED;
++#endif	
+ 
+ 	skb_queue_tail(&pf->xq, skb);
+ 
+@@ -1067,6 +1082,49 @@ pad_compress_skb(struct ppp *ppp, struct
+ 	return new_skb;
+ }
+ 
++#if defined(CONFIG_MIPS_BRCM)
++/*
++ * Excluding timestamp for packet generated from ADSL modem
++ * these include WAN-side RIP,dnsprobe
++ */
++static int
++brcm_on_demand_filter(char *data)
++{
++	unsigned short udp_port=0;
++
++#if 0
++	char cmd;
++
++        printk("%02x%02x%02x%02x\n%02x%02x%02x%02x\n",data[2],data[3],data[4],data[5],data[6],data[7],data[8],data[9]);
++        printk("%02x%02x%02x%02x\n%02x%02x%02x%02x\n",data[10],data[11],data[12],data[13],data[14],data[15],data[16],data[17]);
++        printk("%02x%02x%02x%02x\n",data[18],data[19],data[20],data[21]);
++#endif
++
++	if ( data[11] == 0x2 )  /* IGMP */
++		return 0;
++	if ( data[11] == 0x11 ) { /* UDP */
++	   udp_port= (data[24]<< 8) + data[25];
++	   if ( udp_port == 123 ) { /* ntpclient */
++		return 0;
++	   }
++	   if ( udp_port == 53 ) {
++		if ( data[45] == 'r' && data[46] == 'o' && data[47] == 'o' && data[48] =='t')
++		 
++		return 0;
++	   }
++	   else if (udp_port == 520) { /* RIP */
++#if 0
++			cmd = data[30]; // 1=request, 2=reply
++			if ( cmd == 1)
++#endif
++			  return 0;
++	   }
++	}	
++	   
++        return 1;
++}
++#endif
++
+ /*
+  * Compress and send a frame.
+  * The caller should have locked the xmit path,
+@@ -1079,6 +1137,15 @@ ppp_send_frame(struct ppp *ppp, struct s
+ 	struct sk_buff *new_skb;
+ 	int len;
+ 	unsigned char *cp;
++#if defined(CONFIG_MIPS_BRCM)
++	unsigned char *data;
++	int timestamp = 1;
++
++	if ( proto == PPP_IP) {
++		data = skb->data;
++		timestamp = brcm_on_demand_filter(data);
++	}
++#endif	
+ 
+ 	if (proto < 0x8000) {
+ #ifdef CONFIG_PPP_FILTER
+@@ -1098,10 +1165,16 @@ ppp_send_frame(struct ppp *ppp, struct s
+ 		if (!(ppp->active_filter
+ 		      && sk_run_filter(skb, ppp->active_filter,
+ 				       ppp->active_len) == 0))
++#if defined(CONFIG_MIPS_BRCM)
++	       if (timestamp)
++#endif					       
+ 			ppp->last_xmit = jiffies;
+ 		skb_pull(skb, 2);
+ #else
+ 		/* for data packets, record the time */
++#if defined(CONFIG_MIPS_BRCM)
++	       if (timestamp)
++#endif			
+ 		ppp->last_xmit = jiffies;
+ #endif /* CONFIG_PPP_FILTER */
+ 	}
+@@ -1170,6 +1243,10 @@ ppp_send_frame(struct ppp *ppp, struct s
+ 	if (ppp->flags & SC_LOOP_TRAFFIC) {
+ 		if (ppp->file.rq.qlen > PPP_MAX_RQLEN)
+ 			goto drop;
++#if defined(CONFIG_MIPS_BRCM)		
++		if (!timestamp)
++			goto drop;
++#endif		
+ 		skb_queue_tail(&ppp->file.rq, skb);
+ 		wake_up_interruptible(&ppp->file.rwait);
+ 		return;
+@@ -1563,11 +1640,36 @@ ppp_receive_error(struct ppp *ppp)
+ 		slhc_toss(ppp->vj);
+ }
+ 
++#if defined(CONFIG_MIPS_BRCM)
++static int
++brcm_mcast_filter(char *data)
++{
++	struct iphdr *encap;
++
++	encap = (struct iphdr *)(data + 2);
++	if ( MULTICAST(encap->daddr)) {
++	   if ( !LOCAL_MCAST(encap->daddr)) { // real mcast data
++		//printk("bcm_mcast_filer: 0x%x \n",encap->daddr);
++		return 1;		 // no timestamp
++	   }
++	   else
++		return 0;
++        }
++	else
++		return 0;
++}
++#endif
++
+ static void
+ ppp_receive_nonmp_frame(struct ppp *ppp, struct sk_buff *skb)
+ {
+ 	struct sk_buff *ns;
+ 	int proto, len, npi;
++#if defined(CONFIG_MIPS_BRCM)
++	struct sk_buff *tmp;
++	int timestamp=0;
++	unsigned char *data;
++#endif	
+ 
+ 	/*
+ 	 * Decompress the frame, if compressed.
+@@ -1582,6 +1684,13 @@ ppp_receive_nonmp_frame(struct ppp *ppp,
+ 		goto err;
+ 
+ 	proto = PPP_PROTO(skb);
++	
++#if defined(CONFIG_MIPS_BRCM)
++	if (proto == PPP_IP) {
++		data = skb->data;
++		timestamp = brcm_mcast_filter(data);
++	}
++#endif	
+ 	switch (proto) {
+ 	case PPP_VJC_COMP:
+ 		/* decompress VJ compressed packets */
+@@ -1659,6 +1768,15 @@ ppp_receive_nonmp_frame(struct ppp *ppp,
+ 		/* check if the packet passes the pass and active filters */
+ 		/* the filter instructions are constructed assuming
+ 		   a four-byte PPP header on each packet */
++#if defined(CONFIG_MIPS_BRCM)
++		if (skb_headroom(skb) < 2) { 
++		    tmp = alloc_skb(skb->len+2,GFP_ATOMIC); 
++		    skb_reserve(tmp, 2); 
++		    memcpy(skb_put(tmp, skb->len), skb->data, skb->len); 
++		    kfree_skb(skb); 
++		    skb = tmp; 
++	    	} 
++#endif		   
+ 		*skb_push(skb, 2) = 0;
+ 		if (ppp->pass_filter
+ 		    && sk_run_filter(skb, ppp->pass_filter,
+@@ -1671,9 +1789,15 @@ ppp_receive_nonmp_frame(struct ppp *ppp,
+ 		if (!(ppp->active_filter
+ 		      && sk_run_filter(skb, ppp->active_filter,
+ 				       ppp->active_len) == 0))
++#if defined(CONFIG_MIPS_BRCM)
++	       if (timestamp)
++#endif					       
+ 			ppp->last_recv = jiffies;
+ 		skb_pull(skb, 2);
+ #else
++#if defined(CONFIG_MIPS_BRCM)
++		if (timestamp)
++#endif
+ 		ppp->last_recv = jiffies;
+ #endif /* CONFIG_PPP_FILTER */
+ 
+--- a/drivers/net/pppoe.c
++++ b/drivers/net/pppoe.c
+@@ -77,7 +77,7 @@
+ #include <linux/file.h>
+ #include <linux/proc_fs.h>
+ #include <linux/seq_file.h>
+-
++#include <linux/blog.h>
+ #include <net/sock.h>
+ 
+ #include <asm/uaccess.h>
+@@ -870,6 +870,9 @@ static int __pppoe_xmit(struct sock *sk,
+ 
+ 		skb_reserve(skb2, dev->hard_header_len + sizeof(struct pppoe_hdr));
+ 		memcpy(skb_put(skb2, skb->len), skb->data, skb->len);
++#ifdef CONFIG_BLOG
++        blog_xfer(skb2, skb);
++#endif
+ 	} else {
+ 		/* Make a clone so as to not disturb the original skb,
+ 		 * give dev_queue_xmit something it can free.

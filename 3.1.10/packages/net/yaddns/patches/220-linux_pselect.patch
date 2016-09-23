@@ -1,0 +1,24 @@
+--- a/src/yaddns.c
++++ b/src/yaddns.c
+@@ -13,6 +13,8 @@
+ #include <nbd/core.h>
+ #include <nbd/status.h>
+ 
++#include <etk/linux.h>
++
+ volatile sig_atomic_t quitting = 0;
+ volatile sig_atomic_t reloadconf = 0;
+ volatile sig_atomic_t wakeup = 0;
+@@ -254,9 +256,9 @@ int main(int argc, char **argv)
+                 /* select */
+                 log_debug("select !");
+ 
+-                if(pselect(max_fd + 1,
+-                           &readset, &writeset, NULL,
+-                           &timeout, &unblocked) < 0)
++                if(linux_pselect(max_fd + 1,
++                                 &readset, &writeset, NULL,
++                                 &timeout, &unblocked) < 0)
+                 {
+                         /* error or interuption */
+                         

@@ -1,0 +1,167 @@
+--- a/arch/mips/kernel/cpu-probe.c
++++ b/arch/mips/kernel/cpu-probe.c
+@@ -158,7 +158,12 @@ static inline void check_wait(void)
+ 	case CPU_4KSC:
+ 	case CPU_5KC:
+ 	case CPU_25KF:
+- 	case CPU_PR4450:
++	case CPU_PR4450:
++	case CPU_BCM3302:
++	case CPU_BCM6338:
++	case CPU_BCM6348:
++	case CPU_BCM6358:
++	case CPU_BCM6362:
+ 		cpu_wait = r4k_wait;
+ 		break;
+ 
+@@ -730,6 +735,41 @@ static inline void cpu_probe_sibyte(stru
+ 	}
+ }
+ 
++static inline void cpu_probe_broadcom(struct cpuinfo_mips *c)
++{
++	c->cputype = CPU_UNKNOWN;
++
++	decode_config1(c);
++	switch (c->processor_id & 0xff00) {
++	/* same as PRID_IMP_BCM6338 */
++	case PRID_IMP_BCM3302:
++		c->cputype = CPU_BCM3302;
++		break;
++	case PRID_IMP_BCM4710:
++		c->cputype = CPU_BCM4710;
++		break;
++	case PRID_IMP_BCM6345:
++		c->cputype = CPU_BCM6345;
++		break;
++	case PRID_IMP_BCM6348:
++		c->cputype = CPU_BCM6348;
++		break;
++	case PRID_IMP_BCM4350:
++		switch (c->processor_id & 0xf0) {
++		case PRID_REV_BCM6358:
++			c->cputype = CPU_BCM6358;
++			break;
++		case PRID_REV_BCM6362:
++			c->cputype = CPU_BCM6362;
++			break;
++		default:
++			c->cputype = CPU_UNKNOWN;
++			break;
++		}
++		break;
++	}
++}
++
+ static inline void cpu_probe_sandcraft(struct cpuinfo_mips *c)
+ {
+ 	decode_configs(c);
+@@ -779,6 +819,9 @@ __init void cpu_probe(void)
+ 	case PRID_COMP_SIBYTE:
+ 		cpu_probe_sibyte(c);
+ 		break;
++	case PRID_COMP_BROADCOM:
++		cpu_probe_broadcom(c);
++		break;
+ 	case PRID_COMP_SANDCRAFT:
+ 		cpu_probe_sandcraft(c);
+ 		break;
+--- a/arch/mips/kernel/proc.c
++++ b/arch/mips/kernel/proc.c
+@@ -17,6 +17,7 @@
+ #include <asm/watch.h>
+ 
+ unsigned int vced_count, vcei_count;
++extern unsigned long unaligned_instructions;
+ 
+ static const char *cpu_name[] = {
+ 	[CPU_UNKNOWN]	= "unknown",
+@@ -84,6 +85,9 @@ static const char *cpu_name[] = {
+ 	[CPU_VR4181A]	= "NEC VR4181A",
+ 	[CPU_SR71000]	= "Sandcraft SR71000",
+ 	[CPU_PR4450]	= "Philips PR4450",
++	[CPU_BCM6348]	= "Broadcom BCM6348",
++	[CPU_BCM6358]	= "Broadcom BCM6358",
++	[CPU_BCM6362]	= "Broadcom BCM6362",
+ };
+ 
+ 
+@@ -137,6 +141,7 @@ static int show_cpuinfo(struct seq_file
+ 	seq_printf(m, fmt, 'D', vced_count);
+ 	seq_printf(m, fmt, 'I', vcei_count);
+ 	seq_printf(m, "\n");
++	seq_printf(m, "unaligned exceptions\t\t: %ld\n", unaligned_instructions);
+ 
+ 	return 0;
+ }
+--- a/arch/mips/mm/c-r4k.c
++++ b/arch/mips/mm/c-r4k.c
+@@ -852,6 +852,9 @@ static void __init probe_pcache(void)
+ 		if (!(config & MIPS_CONF_M))
+ 			panic("Don't know how to probe P-caches on this cpu.");
+ 
++		printk("brcm mips: enabling icache and dcache...\n");
++        	    /* Enable caches */
++        	    write_c0_diag(read_c0_diag() | 0xC0000000);
+ 		/*
+ 		 * So we seem to be a MIPS32 or MIPS64 CPU
+ 		 * So let's probe the I-cache ...
+@@ -1163,6 +1166,8 @@ static void __init coherency_setup(void)
+ 	case CPU_R4400PC:
+ 	case CPU_R4400SC:
+ 	case CPU_R4400MC:
++	case CPU_BCM6358:
++	case CPU_BCM6362:
+ 		clear_c0_config(CONF_CU);
+ 		break;
+ 	/*
+--- a/arch/mips/mm/tlbex.c
++++ b/arch/mips/mm/tlbex.c
+@@ -852,6 +852,8 @@ static __init void build_tlb_write_entry
+ 	case CPU_R4400PC:
+ 	case CPU_R4400SC:
+ 	case CPU_R4400MC:
++	case CPU_BCM6358:
++	case CPU_BCM6362:
+ 		/*
+ 		 * This branch uses up a mtc0 hazard nop slot and saves
+ 		 * two nops after the tlbw instruction.
+--- a/include/asm-mips/cpu.h
++++ b/include/asm-mips/cpu.h
+@@ -91,6 +91,20 @@
+ #define PRID_IMP_74K		0x9700
+ 
+ /*
++ * These are the PRID's for when 23:16 == PRID_COMP_BROADCOM
++ */
++
++#define PRID_IMP_BCM4710        0x4000
++#define PRID_IMP_BCM3302        0x9000
++#define PRID_IMP_BCM6338        0x9000
++#define PRID_IMP_BCM6345        0x8000
++#define PRID_IMP_BCM6348        0x9100
++#define PRID_IMP_BCM4350        0xA000
++#define PRID_REV_BCM6358        0x0010
++#define PRID_REV_BCM6368        0x0030
++#define PRID_REV_BCM6362        0x0070
++
++/*
+  * These are the PRID's for when 23:16 == PRID_COMP_SIBYTE
+  */
+ 
+@@ -211,7 +225,14 @@
+ #define CPU_SB1A		62
+ #define CPU_74K			63
+ #define CPU_R14000		64
+-#define CPU_LAST		64
++#define CPU_BCM3302		65
++#define CPU_BCM4710		66
++#define CPU_BCM6338		67
++#define CPU_BCM6345		68
++#define CPU_BCM6348		69
++#define CPU_BCM6358		70
++#define CPU_BCM6362		71
++#define CPU_LAST		72
+ 
+ /*
+  * ISA Level encodings

@@ -1,0 +1,187 @@
+--- a/Makefile
++++ b/Makefile
+@@ -45,9 +45,12 @@
+ #
+ # ppp 2.4.3 sends a SIGTERM after 5 seconds, so it should be safe to
+ # trust pppd. This work around will be removed in the near future.
+-
++#
++# -DFXO_WRAPPER
++# modify behaviour of xl2tp by closing it on failed, and send a SIGHUP to IPv6 wrapper.
++#
+ # DFLAGS= -g -DDEBUG_HELLO -DDEBUG_CLOSE -DDEBUG_FLOW -DDEBUG_PAYLOAD -DDEBUG_CONTROL -DDEBUG_CONTROL_XMIT -DDEBUG_FLOW_MORE -DDEBUG_MAGIC -DDEBUG_ENTROPY -DDEBUG_HIDDEN -DDEBUG_PPPD -DDEBUG_AAA -DDEBUG_FILE -DDEBUG_FLOW -DDEBUG_HELLO -DDEBUG_CLOSE -DDEBUG_ZLB -DDEBUG_AUTH
+-DFLAGS?= -DDEBUG_PPPD -DTRUST_PPPD_TO_DIE -DDEBUG_CLOSE
++DFLAGS?= -DFXO_WRAPPER -DDEBUG_PPPD -DTRUST_PPPD_TO_DIE -DDEBUG_CLOSE
+ 
+ # Uncomment the next line for Linux. KERNELSRC is needed for if_pppol2tp.h,
+ # but we use a local copy if we don't find it.
+--- a/network.c
++++ b/network.c
+@@ -238,6 +238,9 @@ void control_xmit (void *b)
+         }
+ 	free(buf->rstart);
+ 	free(buf);
++#ifdef FXO_WRAPPER
++	call_close(t->self);
++#endif
+     }
+     else
+     {
+--- a/call.c
++++ b/call.c
+@@ -30,6 +30,10 @@
+ 
+ extern void child_handler (int signal);
+ 
++#ifdef FXO_WRAPPER
++extern void death_handler (int signal);
++#endif
++
+ struct buffer *new_payload (struct sockaddr_in peer)
+ {
+     struct buffer *tmp = new_buf (MAX_RECV_SIZE);
+@@ -292,6 +296,9 @@ void call_close (struct call *c)
+                  c->container->ourtid);
+ #endif
+             destroy_tunnel (c->container);
++#ifdef FXO_WRAPPER
++	    death_handler(0);
++#endif
+             return;
+         }
+ 
+--- a/xl2tpd.c
++++ b/xl2tpd.c
+@@ -50,6 +50,7 @@
+ #include <arpa/inet.h>
+ #include "l2tp.h"
+ 
++
+ struct tunnel_list tunnels;
+ int rand_source;
+ int ppd = 1;                    /* Packet processing delay */
+@@ -255,6 +256,97 @@ void child_handler (int signal)
+     }
+ }
+ 
++int file_pid(char const *file)
++{
++	FILE *f = NULL;
++	char buf[16];
++	int ret = -1;
++
++	f = fopen(file, "r");
++	if (f == NULL) {
++		l2tp_log(LOG_WARNING, "fopen(%s): %m", file);
++		return -1;
++	}
++
++	if (fgets(buf, sizeof(buf), f) == NULL) {
++		l2tp_log(LOG_WARNING, "fgets(): %m");
++		goto exit_clean;
++	}
++
++	errno = 0;
++	ret = strtol(buf, NULL, 10);
++	if (errno != 0) {
++		l2tp_log(LOG_WARNING, "strtol(%s): %m", buf);
++		ret = -1;
++	}
++
++exit_clean:
++	fclose(f);
++
++	return ret;
++}
++
++#ifdef FXO_WRAPPER
++int service_cmd(const char *command,
++	       char *action)
++{
++	int back;
++	pid_t pid;
++
++	char * argv[3];
++	argv[0] = command;
++	argv[1] = action;
++	argv[2] = NULL;
++
++	/* nbs_system_log_cmd(LOG_DEBUG, argv); */
++
++	if ((pid = fork()) < 0) {
++		/* fork error */
++		perror("fork");
++		return -1;
++	}
++
++	/* child process */
++	if (pid == 0) {
++		execvp(command, argv);
++		/* exec failed */
++		l2tp_log(LOG_INFO, "%s", "exec failed");
++		l2tp_log(LOG_INFO, "%s", argv);
++		exit(127);
++	}
++
++	/* father process */
++	/* waiting the end of child process */
++	waitpid(pid, &back, 0);
++
++	/* it's time to log */
++	if (WIFEXITED(back)) {
++		if (WEXITSTATUS(back) == EXIT_SUCCESS) {
++			l2tp_log(LOG_INFO, "%s", "success");
++			return 0;
++		} else {
++			l2tp_log(LOG_INFO, "%s", "exit failed");
++			l2tp_log(LOG_INFO, "%s", argv);
++			return -WEXITSTATUS(back);
++		}
++	} else if (WIFSIGNALED(back)) {
++		l2tp_log(LOG_INFO, "%s", "signaled failed");
++		l2tp_log(LOG_INFO, "%s", argv);
++		return -1;
++	} else if (WIFSTOPPED(back)) {
++		l2tp_log(LOG_INFO, "%s", "stopped failed");
++		l2tp_log(LOG_INFO, "%s", argv);
++		return -1;
++	} else {
++		l2tp_log(LOG_INFO, "%s", argv);
++		l2tp_log(LOG_INFO, "what's happen ? back=%X", back);
++		return back;
++	}
++
++	return back;
++}
++#endif
++
+ void death_handler (int signal)
+ {
+     /*
+@@ -265,6 +357,7 @@ void death_handler (int signal)
+      */
+     struct tunnel *st, *st2;
+     int sec;
++    int pid;
+     l2tp_log (LOG_CRIT, "%s: Fatal signal %d received\n", __FUNCTION__, signal);
+         if (signal != SIGTERM) {
+                 st = tunnels.head;
+@@ -289,6 +382,18 @@ void death_handler (int signal)
+     unlink (gconfig.pidfile);
+     unlink (gconfig.controlfile);
+ 
++#ifdef FXO_WRAPPER
++    pid = file_pid("/var/run/ipv6-wrapper.pid");
++    if (pid != -1) {
++	    l2tp_log(LOG_INFO, "%s", "stop ipv6");
++	    service_cmd("/etc/init.d/ipv6", "stop");
++    	    l2tp_log(LOG_INFO, "Send SIGHUP to ipv6_wrapper[%d]\n", pid);
++	    kill(pid, SIGHUP);
++    }
++    else
++    	l2tp_log(LOG_INFO, "No ipv6_wrapper running\n");
++#endif
++
+     exit (1);
+ }
+ 

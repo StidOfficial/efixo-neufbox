@@ -1,0 +1,8 @@
+#!/bin/sh
+
+chmod u+s /bin/busybox
+chmod u+s /usr/bin/serialization
+chmod u+s /usr/bin/ledctl
+chmod u+s /usr/sbin/wlctl 2>/dev/null
+
+exec /bin/busybox init

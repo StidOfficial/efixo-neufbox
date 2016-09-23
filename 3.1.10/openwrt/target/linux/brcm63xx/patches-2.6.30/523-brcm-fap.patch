@@ -1,0 +1,22 @@
+--- a/init/main.c
++++ b/init/main.c
+@@ -110,6 +110,7 @@ EXPORT_SYMBOL(system_state);
+ 
+ #ifdef CONFIG_BCM63XX
+ extern void __init allocDspModBuffers(void);
++extern void __init allocFapModBuffers(void);
+ #endif
+ 
+ extern void time_init(void);
+@@ -660,7 +661,10 @@ asmlinkage void __init start_kernel(void
+ 	** before mem_init().
+ 	*/
+ 	allocDspModBuffers();
+-#endif 
++#endif
++#ifdef CONFIG_BCM63XX_FAP
++	allocFapModBuffers();
++#endif
+ 	page_cgroup_init();
+ 	mem_init();
+ 	enable_debug_pagealloc();

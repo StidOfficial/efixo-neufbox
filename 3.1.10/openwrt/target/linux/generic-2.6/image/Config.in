@@ -1,0 +1,21 @@
+config FIRMWARE_RELEASE
+	string "Firmware Release"
+
+config OPERATOR_DOMAIN
+	string "Operator domain"
+	default "neufbox.neuf.fr"
+
+menuconfig neufbox_net_infra
+	bool "neufbox"
+
+config neufbox_net_infra_adsl
+	bool "net infra ADSL" if neufbox_net_infra
+
+config neufbox_net_infra_ftth
+	bool "net infra FTTH" if neufbox_net_infra
+
+config neufbox_net_infra_gprs
+	bool "net infra GPRS" if neufbox_net_infra
+
+config neufbox_net_infra_bridge
+	bool "net infra Bridge" if neufbox_net_infra

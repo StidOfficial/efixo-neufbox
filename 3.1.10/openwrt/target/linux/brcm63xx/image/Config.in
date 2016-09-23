@@ -1,0 +1,16 @@
+choice
+	prompt "Broadcom SoC"
+	depends on TARGET_brcm63xx
+
+config neufbox_soc_6358
+	bool "6358"
+
+config neufbox_soc_6362
+	bool "6362"
+
+endchoice
+
+config NEUFBOX_SOC_TYPE
+	string
+	default "6358" if neufbox_soc_6358
+	default "6362" if neufbox_soc_6362

@@ -1,0 +1,19 @@
+--- a/dbutil.c
++++ b/dbutil.c
+@@ -164,11 +164,15 @@ static void set_sock_priority(int sock)
+ 	/* set the TOS bit. note that this will fail for ipv6, I can't find any
+ 	 * equivalent. */
+ #ifdef IPTOS_LOWDELAY
++#if !defined (VOIP_DSCP)
+ 	val = IPTOS_LOWDELAY;
++#else
++	val = (VOIP_DSCP << 2);
++#endif
+ 	setsockopt(sock, IPPROTO_IP, IP_TOS, (void*)&val, sizeof(val));
+ #endif
+ 
+-#ifdef SO_PRIORITY
++#ifdef SO_PRIORITY && !defined (VOIP_DSCP)
+ 	/* linux specific, sets QoS class.
+ 	 * 6 looks to be optimal for interactive traffic (see tc-prio(8) ). */
+ 	val = 6;

@@ -1,0 +1,13 @@
+--- a/net/netfilter/xt_TCPMSS.c
++++ b/net/netfilter/xt_TCPMSS.c
+@@ -170,6 +170,10 @@ static u_int32_t tcpmss_reverse_mtu(cons
+ 		mtu = dst_mtu(&rt->u.dst);
+ 		dst_release(&rt->u.dst);
+ 	}
++
++	if (skb->dev)
++		mtu = min(mtu, skb->dev->mtu);
++
+ 	return mtu;
+ }
+ 

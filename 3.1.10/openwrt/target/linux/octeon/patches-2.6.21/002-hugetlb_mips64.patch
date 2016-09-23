@@ -1,0 +1,81 @@
+--- a/fs/Kconfig
++++ b/fs/Kconfig
+@@ -998,7 +998,7 @@ config TMPFS_POSIX_ACL
+ 
+ config HUGETLBFS
+ 	bool "HugeTLB file system support"
+-	depends on X86 || IA64 || PPC64 || SPARC64 || SUPERH || BROKEN
++	depends on X86 || IA64 || PPC64 || SPARC64 || SUPERH || BROKEN || (MIPS && 64BIT)
+ 	help
+ 	  hugetlbfs is a filesystem backing for HugeTLB pages, based on
+ 	  ramfs. For architectures that support it, say Y here and read
+--- a/include/linux/hugetlb.h
++++ b/include/linux/hugetlb.h
+@@ -80,7 +80,13 @@ int prepare_hugepage_range(unsigned long
+ 
+ #ifndef ARCH_HAS_SETCLEAR_HUGE_PTE
+ #define set_huge_pte_at(mm, addr, ptep, pte)	set_pte_at(mm, addr, ptep, pte)
+-#define huge_ptep_get_and_clear(mm, addr, ptep) ptep_get_and_clear(mm, addr, ptep)
++#define huge_ptep_get_and_clear(mm, addr, ptep)                         \
++({                                                                      \
++        pte_t __pte = *(ptep);                                          \
++        pmd_clear((pmd_t*)(ptep));                                      \
++        __pte;                                                          \
++})
++
+ #else
+ void set_huge_pte_at(struct mm_struct *mm, unsigned long addr,
+ 		     pte_t *ptep, pte_t pte);
+--- a/mm/hugetlb.c
++++ b/mm/hugetlb.c
+@@ -39,7 +39,7 @@ static void clear_huge_page(struct page
+ 	might_sleep();
+ 	for (i = 0; i < (HPAGE_SIZE/PAGE_SIZE); i++) {
+ 		cond_resched();
+-		clear_user_highpage(page + i, addr);
++		clear_user_highpage(page + i, addr + i * PAGE_SIZE);
+ 	}
+ }
+ 
+@@ -340,9 +340,10 @@ int copy_hugetlb_page_range(struct mm_st
+ 			goto nomem;
+ 		spin_lock(&dst->page_table_lock);
+ 		spin_lock(&src->page_table_lock);
+-		if (!pte_none(*src_pte)) {
+-			if (cow)
++		if (!pmd_none(*(pmd_t*)src_pte) && !pte_none(*src_pte)) {
++			if (cow) 
+ 				ptep_set_wrprotect(src, addr, src_pte);
++			
+ 			entry = *src_pte;
+ 			ptepage = pte_page(entry);
+ 			get_page(ptepage);
+@@ -387,7 +388,7 @@ void __unmap_hugepage_range(struct vm_ar
+ 			continue;
+ 
+ 		pte = huge_ptep_get_and_clear(mm, address, ptep);
+-		if (pte_none(pte))
++		if(pmd_none(*(pmd_t*)&pte) || pte_none(pte))
+ 			continue;
+ 
+ 		page = pte_page(pte);
+@@ -600,9 +601,8 @@ int follow_hugetlb_page(struct mm_struct
+ 		 */
+ 		pte = huge_pte_offset(mm, vaddr & HPAGE_MASK);
+ 
+-		if (!pte || pte_none(*pte)) {
++		if (!pte || pmd_none(*(pmd_t*)pte) || pte_none(*pte)) {
+ 			int ret;
+-
+ 			spin_unlock(&mm->page_table_lock);
+ 			ret = hugetlb_fault(mm, vma, vaddr, 0);
+ 			spin_lock(&mm->page_table_lock);
+@@ -665,7 +665,7 @@ void hugetlb_change_protection(struct vm
+ 			continue;
+ 		if (huge_pmd_unshare(mm, &address, ptep))
+ 			continue;
+-		if (!pte_none(*ptep)) {
++		if (!pmd_none(*(pmd_t*)ptep) && !pte_none(*ptep)) {
+ 			pte = huge_ptep_get_and_clear(mm, address, ptep);
+ 			pte = pte_mkhuge(pte_modify(pte, newprot));
+ 			set_huge_pte_at(mm, address, ptep, pte);

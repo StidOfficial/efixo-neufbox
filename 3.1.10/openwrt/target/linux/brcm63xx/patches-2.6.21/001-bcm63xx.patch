@@ -1,0 +1,61 @@
+--- a/arch/mips/Makefile
++++ b/arch/mips/Makefile
+@@ -267,6 +267,14 @@ libs-$(CONFIG_MIPS_XXS1500)	+= arch/mips
+ load-$(CONFIG_MIPS_XXS1500)	+= 0xffffffff80100000
+ 
+ #
++# Broadcom board
++#
++core-$(CONFIG_MIPS_BRCM)		+= arch/mips/bcm63xx/
++cflags-$(CONFIG_MIPS_BRCM)     	+= -Iinclude/asm-mips/mach-bcm63xx
++load-$(CONFIG_MIPS_BRCM)	    += 0x80010000
++
++
++#
+ # Cobalt Server
+ #
+ core-$(CONFIG_MIPS_COBALT)	+= arch/mips/cobalt/
+--- a/arch/mips/mm/init.c
++++ b/arch/mips/mm/init.c
+@@ -351,7 +351,7 @@ void __init paging_init(void)
+ #endif
+ 	kmap_coherent_init();
+ 
+-#ifdef CONFIG_ISA
++#if defined(CONFIG_MIPS_BRCM)
+ 	if (max_low_pfn >= MAX_DMA_PFN)
+ 		if (min_low_pfn >= MAX_DMA_PFN) {
+ 			zones_size[ZONE_DMA] = 0;
+--- a/include/asm-mips/bootinfo.h
++++ b/include/asm-mips/bootinfo.h
+@@ -213,6 +213,12 @@
+ #define MACH_GROUP_NEC_EMMA2RH 25	/* NEC EMMA2RH (was 23)		*/
+ #define  MACH_NEC_MARKEINS	0	/* NEC EMMA2RH Mark-eins	*/
+ 
++/*
++ * Valid machtype for group BRCM
++ */
++#define MACH_GROUP_BRCM        23	/* Broadcom boards              */
++#define MACH_BCM963XX       0
++
+ #define CL_SIZE			COMMAND_LINE_SIZE
+ 
+ const char *get_system_type(void);
+--- a/include/asm-mips/fixmap.h
++++ b/include/asm-mips/fixmap.h
+@@ -77,11 +77,15 @@ extern void __set_fixmap (enum fixed_add
+  * the start of the fixmap, and leave one page empty
+  * at the top of mem..
+  */
++#if defined(CONFIG_MIPS_BRCM)
++#define FIXADDR_TOP	((unsigned long)(long)(int)0xff000000)
++#else
+ #if defined(CONFIG_CPU_TX39XX) || defined(CONFIG_CPU_TX49XX)
+ #define FIXADDR_TOP	((unsigned long)(long)(int)(0xff000000 - 0x20000))
+ #else
+ #define FIXADDR_TOP	((unsigned long)(long)(int)0xfffe0000)
+ #endif
++#endif
+ #define FIXADDR_SIZE	(__end_of_fixed_addresses << PAGE_SHIFT)
+ #define FIXADDR_START	(FIXADDR_TOP - FIXADDR_SIZE)
+ 

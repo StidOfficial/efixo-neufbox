@@ -1,0 +1,140 @@
+--- a/drivers/net/cavium-ethernet/ethernet-mdio.c
++++ b/drivers/net/cavium-ethernet/ethernet-mdio.c
+@@ -50,6 +50,8 @@
+ #include "cvmx-sysinfo.h"
+ #include "wrapper-cvmx-includes.h"
+ #include "ethernet-headers.h"
++#include <linux/bcm53xx.h>
++#include <linux/bcm54xx.h>
+ 
+ 
+ /**
+@@ -186,7 +188,17 @@ int cvm_oct_ioctl(struct net_device *dev
+     cvm_oct_private_t*      priv = (cvm_oct_private_t*)netdev_priv(dev);
+     struct mii_ioctl_data*  data = if_mii(rq);
+     unsigned int            duplex_chg;
+-    return generic_mii_ioctl(&priv->mii_info, data, cmd, &duplex_chg);
++    int                     rc = -EOPNOTSUPP;
++    extern struct bcmphy bcm5482;
++    extern struct bcmphy bcm5395;
++
++    if (priv->port == 0)
++	    rc = bcm54xx_ioctl(&bcm5482, rq, cmd);
++    else if (priv->port == 1)
++	    rc = bcm53xx_ioctl(&bcm5395, rq, cmd);
++    if (rc == -EOPNOTSUPP)
++	    rc = generic_mii_ioctl(&priv->mii_info, data, cmd, &duplex_chg);
++    return rc;
+ }
+ 
+ 
+--- a/drivers/net/cavium-ethernet/ethernet-tx.c
++++ b/drivers/net/cavium-ethernet/ethernet-tx.c
+@@ -62,6 +62,10 @@
+ #include "wrapper-cvmx-includes.h"
+ #include "ethernet-headers.h"
+ 
++#ifdef CONFIG_LEDS_NEUFBOX
++#include <neufbox/leds.h>
++#endif /* CONFIG_LEDS_NEUFBOX */
++
+ /* You can define GET_SKBUFF_QOS() to override how the skbuff output function
+     determines which output queue is used. The default implementation
+     always uses the base queue for the port. If, for example, you wanted
+@@ -308,6 +312,9 @@ dont_put_skbuff_in_hw:
+             /* Put this packet on the queue to be freed later */
+             skb_queue_tail(&priv->tx_free_list[qos], skb);
+         }
++#ifdef CONFIG_LEDS_NEUFBOX
++        leds_config(led_id_traffic, led_state_blinkonce);
++#endif /* CONFIG_LEDS_NEUFBOX */
+     }
+ 
+     /* Free skbuffs not in use by the hardware, possibly two at a time */
+--- a/drivers/net/cavium-ethernet/ethernet.c
++++ b/drivers/net/cavium-ethernet/ethernet.c
+@@ -51,6 +51,9 @@
+ #include "wrapper-cvmx-includes.h"
+ #include "ethernet-headers.h"
+ 
++#include <linux/bcm54xx.h>
++#include <linux/bcm53xx.h>
++
+ int pow_receive_group = 15;
+ module_param(pow_receive_group, int, 0444);
+ MODULE_PARM_DESC(pow_receive_group, "\n"
+@@ -107,6 +110,32 @@ static struct timer_list cvm_oct_poll_ti
+  */
+ struct net_device *cvm_oct_device[TOTAL_NUMBER_OF_PORTS];
+ 
++#include <cvmx-mdio.h>
++
++static unsigned phy_read(struct bcmphy *phy, unsigned location)
++{
++	return cvmx_mdio_read(0, phy->id, location);
++}
++
++static unsigned phy_write(struct bcmphy *phy, unsigned location, unsigned val)
++{
++	return cvmx_mdio_write(0, phy->id, location, val);
++}
++
++struct bcmphy bcm5395 = {
++	.dev_id = 0x95,
++	.id = 0X1e,
++	.ports_count = 5,
++	.read = phy_read,
++	.write = phy_write,
++};
++
++struct bcmphy bcm5482 = {
++	.dev_id = 0x82,
++	.id = 0X08,
++	.read = phy_read,
++	.write = phy_write,
++};
+ 
+ /**
+  * Periodic timer tick for slow management operations
+@@ -370,6 +399,14 @@ static int __init cvm_oct_init_module(vo
+                 continue;
+             }
+ 
++	    if (port == 0) {
++		    bcm5482.dev = dev;
++		    bcm54xx_probe(&bcm5482);
++	    } else if (port == 1) {
++		    bcm5395.dev = dev;
++		    bcm53xx_probe(&bcm5395);
++	    }
++
+             /* Initialize the device private structure. */
+             priv = (cvm_oct_private_t*)netdev_priv(dev);
+             memset(priv, 0, sizeof(cvm_oct_private_t));
+--- a/drivers/net/cavium-ethernet/ethernet-rgmii.c
++++ b/drivers/net/cavium-ethernet/ethernet-rgmii.c
+@@ -50,6 +50,9 @@
+ #include "wrapper-cvmx-includes.h"
+ #include "ethernet-headers.h"
+ 
++#include <linux/bcm53xx.h>
++#include <linux/bcm54xx.h>
++
+ extern int octeon_is_simulation(void);
+ extern struct net_device *cvm_oct_device[];
+ DEFINE_SPINLOCK(global_register_lock);
+@@ -60,6 +63,14 @@ static void cvm_oct_rgmii_poll(struct ne
+     cvm_oct_private_t* priv = (cvm_oct_private_t*)netdev_priv(dev);
+     unsigned long flags;
+     cvmx_helper_link_info_t link_info;
++    
++    extern struct bcmphy bcm5482;
++    extern struct bcmphy bcm5395;
++
++    if (priv->port == 0)
++	    bcm54xx_media_check(&bcm5482);
++    else if (priv->port == 1)
++	    bcm53xx_media_check(&bcm5395);
+ 
+     /* Take the global register lock since we are going to touch
+         registers that affect more than one port */
