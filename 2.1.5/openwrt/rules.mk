@@ -16,7 +16,7 @@ include $(TOPDIR)/include/verbose.mk
 
 TMP_DIR:=$(TOPDIR)/tmp
 
-export SHELL=/usr/bin/env bash -c '. $(TOPDIR)/include/shell.sh; eval "$$2"' --
+export SHELL=/usr/bin/env bash -c '. $(TOPDIR)/include/shell.sh ; eval "$$2"' --
 
 qstrip=$(strip $(subst ",,$(1)))
 #"))
